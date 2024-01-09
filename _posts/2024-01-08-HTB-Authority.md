@@ -131,12 +131,14 @@ Immediately we can note that ldap ssl cert is leaking the htb.corp domain and au
 |_Not valid after:  2024-08-09T23:13:21
 |_ssl-date: 2024-01-09T23:17:24+00:00; +4h00m18s from scanner time.
 ```
-#User foothold
+
+# User foothold
+
 The nmap output has a lot of information so we will try to look at each service individually. 
 It's a good idea prioritize and plan out enumeration when a target has a long list of ports and services.
 Spending a long time trying to brute force 
 
-##DNS (53/TCP)
+## DNS (53/TCP)
 Let's try a DNS zone transfer using the domain name found in the ldap ssl certificate.
 ```console
 0ph3@parrot~$ dig axfr htb.corp @10.10.11.222
