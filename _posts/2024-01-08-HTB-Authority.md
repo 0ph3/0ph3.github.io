@@ -1,3 +1,6 @@
+---
+categories: [HTB, Medium]
+---
 # HTB CTF - Authority (Medium)
 
 ## Enumeration
@@ -150,20 +153,21 @@ Doesn't seem zone transfers are allowed. Let's move on to enumerating any SMB sh
 ### SMB (445/TCP)
 
 ```console
-0ph3@parrot~$ smbclient -L \\\\10.10.11.222\\
-Password for [WORKGROUP\0ph3]:
-
-        Sharename       Type      Comment
-        ---------       ----      -------
-        ADMIN$          Disk      Remote Admin
-        C$              Disk      Default share
-        Department Shares Disk      
-        Development     Disk      
-        IPC$            IPC       Remote IPC
-        NETLOGON        Disk      Logon server share 
-        SYSVOL          Disk      Logon server share 
+0ph3@parrot~$ cme smb 10.10.11.222 -u 0ph3 -p '' --shares
+SMB         10.10.11.222    445    AUTHORITY        [*] Windows 10.0 Build 17763 x64 (name:AUTHORITY) (domain:authority.htb) (signing:True) (SMBv1:False)
+SMB         10.10.11.222    445    AUTHORITY        [+] authority.htb\0ph3: 
+SMB         10.10.11.222    445    AUTHORITY        [*] Enumerated shares
+SMB         10.10.11.222    445    AUTHORITY        Share           Permissions     Remark
+SMB         10.10.11.222    445    AUTHORITY        -----           -----------     ------
+SMB         10.10.11.222    445    AUTHORITY        ADMIN$                          Remote Admin
+SMB         10.10.11.222    445    AUTHORITY        C$                              Default share
+SMB         10.10.11.222    445    AUTHORITY        Department Shares                 
+SMB         10.10.11.222    445    AUTHORITY        Development     READ            
+SMB         10.10.11.222    445    AUTHORITY        IPC$            READ            Remote IPC
+SMB         10.10.11.222    445    AUTHORITY        NETLOGON                        Logon server share 
+SMB         10.10.11.222    445    AUTHORITY        SYSVOL                          Logon server share 
 ```
-
+Looks like anybody has access to the Development share
 ### HTTP (80/TCP), HTTPS (8443/TCP)
 The web page on 80/TCP shows a standard IIS landing page. There does not seem to be much else here.
 picture-IIS
