@@ -206,7 +206,32 @@ SMB         10.10.11.222    445    AUTHORITY        IPC$            READ        
 SMB         10.10.11.222    445    AUTHORITY        NETLOGON                        Logon server share 
 SMB         10.10.11.222    445    AUTHORITY      
 ```
-Looks like we have READ access to the ```Development``` share.
+Looks like we only have READ access to the ```Development``` share. Let's see what we can find!
+We could use smbclient to manually navigate the share but mounting the share will making searching through directories and files easier.
+
+```console
+0ph3@parrot~$ mkdir /mnt/authority/
+0ph3@parrot~$mount -t cifs //10.10.11.222/Development /mnt/authority/development/
+Password for 0ph3@//10.10.11.222/Development:
+```
+With the share mounted, lets take a look at the contents
+```console
+0ph3@parrot~$ tree -L 3 /mnt/authority/development/
+/mnt/authority/development/
+└── Automation
+    └── Ansible
+        ├── ADCS
+        ├── LDAP
+        ├── PWM
+        └── SHARE
+```
+The share appears to host folders for different services under the Automation\Ansible folder.
+If you are unfamiliar with [Ansible](https://docs.ansible.com/ansible/latest/getting_started/introduction.html), know that it is essentially software used to automate complex tasks.
+It is often used by development teams and IT professionals to automatically deploy, maintain, update and manage software/system components and configurations amongst other uses.
+Immediatly, the PWM folder looks interesting. With some luck, there may be credentials to the login page we found.
+
+``````
+
 ##
 ## User foothold svc_ldap
 
