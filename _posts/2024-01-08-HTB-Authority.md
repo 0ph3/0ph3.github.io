@@ -125,7 +125,7 @@ nt-size:14px;} p {font-size:12px;} a {color:black;} .line {height:1px;background
 SF-Port8443-TCP:V=7.93%T=SSL%I=7%D=1/9%Time=659D9B87%P=x86_64-pc-linux-gnu
 <SNIP>  
 ```
-Immediately we can note that ldap ssl cert is leaking the htb.corp domain and subdomain authority.htb.corp which is likely the hostname of our target
+Immediately we can note that ldap ssl cert is leaking the AD domain name authority.htb
 ```console
 389/tcp   open  ldap          Microsoft Windows Active Directory LDAP (Domain: authority.htb, Site: Default-First-Site-Name)
 | ssl-cert: Subject:
@@ -142,9 +142,9 @@ Spending a long time trying to brute force
 ### DNS (53/TCP)
 Let's try a DNS zone transfer using the domain name found in the ldap ssl certificate.
 ```console
-0ph3@parrot~$ dig axfr htb.corp @10.10.11.222
+0ph3@parrot~$ dig axfr authority.htb @10.10.11.222
 
-; <<>> DiG 9.18.16-1~deb12u1~bpo11+1-Debian <<>> axfr htb.corp @10.10.11.222
+; <<>> DiG 9.18.16-1~deb12u1~bpo11+1-Debian <<>> axfr authority.htb @10.10.11.222
 ;; global options: +cmd
 ; Transfer failed.
 ```
@@ -228,9 +228,21 @@ With the share mounted, lets take a look at the contents
 The share appears to host folders for different services under the Automation\Ansible folder.
 If you are unfamiliar with [Ansible](https://docs.ansible.com/ansible/latest/getting_started/introduction.html), know that it is essentially software used to automate complex tasks.
 It is often used by development teams and IT professionals to automatically deploy, maintain, update and manage software/system components and configurations amongst other uses.
-Immediatly, the PWM folder looks interesting. With some luck, there may be credentials to the login page we found.
+That being said, the PWM folder looks interesting. With some luck, there may be credentials to the PWM login page we found.
 
-``````
+ansible_inventory file seems to contain winrm credentials.
+```
+0ph3@parrot~$ cat /mnt/authority/development/Automation/Ansible/PWM/ansible_inventory 
+ansible_user: administrator
+ansible_password: Welcome1
+ansible_port: 5985
+ansible_connection: winrm
+ansible_winrm_transport: ntlm
+ansible_winrm_server_cert_validation: ignore
+```
+Trying the credentials against the DC fails
+
+
 
 ##
 ## User foothold svc_ldap
