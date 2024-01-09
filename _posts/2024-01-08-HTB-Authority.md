@@ -1,6 +1,6 @@
 # HTB CTF - Authority (Medium)
 
-## Service Enumeration
+## Enumeration
 
 ### Port Scan
 
@@ -122,7 +122,7 @@ nt-size:14px;} p {font-size:12px;} a {color:black;} .line {height:1px;background
 SF-Port8443-TCP:V=7.93%T=SSL%I=7%D=1/9%Time=659D9B87%P=x86_64-pc-linux-gnu
 <SNIP>  
 ```
-Immediately we can note that ldap ssl cert is leaking the htb.corp domain and authority.htb.corp
+Immediately we can note that ldap ssl cert is leaking the htb.corp domain and subdomain authority.htb.corp which is likely the hostname of our target
 ```console
 389/tcp   open  ldap          Microsoft Windows Active Directory LDAP (Domain: authority.htb, Site: Default-First-Site-Name)
 | ssl-cert: Subject:
@@ -132,13 +132,11 @@ Immediately we can note that ldap ssl cert is leaking the htb.corp domain and au
 |_ssl-date: 2024-01-09T23:17:24+00:00; +4h00m18s from scanner time.
 ```
 
-# User foothold
-
 The nmap output has a lot of information so we will try to look at each service individually. 
 It's a good idea prioritize and plan out enumeration when a target has a long list of ports and services.
 Spending a long time trying to brute force 
 
-## DNS (53/TCP)
+### DNS (53/TCP)
 Let's try a DNS zone transfer using the domain name found in the ldap ssl certificate.
 ```console
 0ph3@parrot~$ dig axfr htb.corp @10.10.11.222
@@ -149,7 +147,7 @@ Let's try a DNS zone transfer using the domain name found in the ldap ssl certif
 ```
 Doesn't seem zone transfers are allowed. Let's move on to enumerating any SMB shares on the target
 
-## SMB (445/TCP)
+### SMB (445/TCP)
 
 ```console
 0ph3@parrot~$ smbclient -L \\\\10.10.11.222\\
@@ -166,7 +164,7 @@ Password for [WORKGROUP\0ph3]:
         SYSVOL          Disk      Logon server share 
 ```
 
-## HTTP (80/TCP), HTTPS (8443/TCP)
+### HTTP (80/TCP), HTTPS (8443/TCP)
 The web page on 80/TCP shows a standard IIS landing page. There does not seem to be much else here.
 picture-IIS
 Navigating to https://10.10.11.222/ redirects to a login page for a [PWM](https://github.com/pwm-project/pwm/) web application. 
@@ -178,5 +176,8 @@ GIF-PWA
 
 As shown above, when enabled, configuration mode grants access to the configuration manager and configuration editor with only a password.
 Let's try to use that password we found earlier to gain access.
+##
+## User foothold svc_ldap
+
 
 
