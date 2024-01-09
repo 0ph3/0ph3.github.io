@@ -148,10 +148,49 @@ Let's try a DNS zone transfer using the domain name found in the ldap ssl certif
 ;; global options: +cmd
 ; Transfer failed.
 ```
-Doesn't seem zone transfers are allowed. Let's move on to enumerating any SMB shares on the target
+Doesn't seem zone transfers are allowed. Let's move on to enumerating the web services on the target.
+
+### HTTP (80/TCP)
+The web page on 80/TCP shows a standard IIS landing page. There does not seem to be much else here.
+picture-IIS
+Directory busting doesn't prove fruitful either. 
+```
+0ph3@parrot~$ feroxbuster -u http://10.10.11.222
+
+ ___  ___  __   __     __      __         __   ___
+|__  |__  |__) |__) | /  `    /  \ \_/ | |  \ |__
+|    |___ |  \ |  \ | \__,    \__/ / \ | |__/ |___
+by Ben "epi" Risher 🤓                 ver: 2.3.3
+───────────────────────────┬──────────────────────
+ 🎯  Target Url            │ http://10.10.11.222
+ 🚀  Threads               │ 50
+ 📖  Wordlist              │ /usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt
+ 👌  Status Codes          │ [200, 204, 301, 302, 307, 308, 401, 403, 405, 500]
+ 💥  Timeout (secs)        │ 7
+ 🦡  User-Agent            │ feroxbuster/2.3.3
+ 💉  Config File           │ /etc/feroxbuster/ferox-config.toml
+ 🔃  Recursion Depth       │ 4
+ 🎉  New Version Available │ https://github.com/epi052/feroxbuster/releases/latest
+───────────────────────────┴──────────────────────
+ 🏁  Press [ENTER] to use the Scan Cancel Menu™
+──────────────────────────────────────────────────
+[####################] - 30s    30000/30000   0s      found:0       errors:0      
+[####################] - 30s    30000/30000   997/s   http://10.10.11.222
+```
+If we wanted to go down this IIS rabbit hole we could maybe try IIS tilde enumeration. For now let's move on to the other web service.
+
+### HTTPS (8443/TCP)
+Navigating to https://10.10.11.222/ redirects to a login page for a [PWM](https://github.com/pwm-project/pwm/) web application. 
+Doing some research reveals PWM is a java based application that allows users to login and submit password resets through LDAP.
+Trying some common default credentials on the login page does not have any sucess.
+If we look below the login form, we can see a message stating the application is in configuration mode.
+This misconfiguration allows access to the configuration manager and configuration editor with only a password.
+
+GIF-PWA
+
+Before we fall down a password bruteforcing rabbit hole early on, let's continue to enumerate and see if we can find anything useful on any SMB shares. 
 
 ### SMB (445/TCP)
-
 ```console
 0ph3@parrot~$ cme smb 10.10.11.222 -u 0ph3 -p '' --shares
 SMB         10.10.11.222    445    AUTHORITY        [*] Windows 10.0 Build 17763 x64 (name:AUTHORITY) (domain:authority.htb) (signing:True) (SMBv1:False)
@@ -165,21 +204,9 @@ SMB         10.10.11.222    445    AUTHORITY        Department Shares
 SMB         10.10.11.222    445    AUTHORITY        Development     READ            
 SMB         10.10.11.222    445    AUTHORITY        IPC$            READ            Remote IPC
 SMB         10.10.11.222    445    AUTHORITY        NETLOGON                        Logon server share 
-SMB         10.10.11.222    445    AUTHORITY        SYSVOL                          Logon server share 
+SMB         10.10.11.222    445    AUTHORITY      
 ```
-Looks like anybody has access to the Development share
-### HTTP (80/TCP), HTTPS (8443/TCP)
-The web page on 80/TCP shows a standard IIS landing page. There does not seem to be much else here.
-picture-IIS
-Navigating to https://10.10.11.222/ redirects to a login page for a [PWM](https://github.com/pwm-project/pwm/) web application. 
-Doing some research reveals PWM is a java based application that allows users to login and submit password resets through LDAP.
-Trying some common default credentials on the login page does not have any sucess.
-If we look below the login form, we can see the application is misconfigured and set in configuration mode.
-
-GIF-PWA
-
-As shown above, when enabled, configuration mode grants access to the configuration manager and configuration editor with only a password.
-Let's try to use that password we found earlier to gain access.
+Looks like we have READ access to the ```Development``` share.
 ##
 ## User foothold svc_ldap
 
