@@ -6,8 +6,7 @@ I like to start by gathering a list of open ports before running nmap enumeratio
 This saves a bit of time on the scan and also reduces the amount of traffic sent over the network.
 Starting off with a basic port scan reveals the following ports open on the machine.
 ```shell
-─[root@parrot]─[/htb/labs/Authority]
-└──╼ #nmap -p- --min-rate=5000 10.10.11.222
+0ph3@parrot~$ nmap -p- --min-rate=5000 10.10.11.222
 Nmap scan report for 10.10.11.222
 Host is up (0.11s latency).
 Not shown: 963 closed tcp ports (reset)
@@ -36,8 +35,7 @@ Usually the combination of Kerberos (88/TCP), ldap (389,636/TCP), microsoft-ds (
 Using the list of open ports, we can try enumerating each service running on them.
 
 ```shell
-┌─[root@parrot]─[/htb/labs/Authority]
-└──╼ #nmap -p 53,80,88,135,139,389,445,464,593,636,3268,3269,5985,8443,9389,47001 -sV -sC 10.10.11.222
+0ph3@parrot~$ nmap -p 53,80,88,135,139,389,445,464,593,636,3268,3269,5985,8443,9389,47001 -sV -sC 10.10.11.222
 Stats: 0:00:34 elapsed; 0 hosts completed (1 up), 1 undergoing Service Scan
 Nmap scan report for 10.10.11.222
 Host is up (0.095s latency).
@@ -139,8 +137,7 @@ Spending a long time trying to brute force
 ##DNS (53/TCP)
 Let's try a DNS zone transfer using the domain name found in the ldap ssl certificate.
 ```shell
-┌─[root@parrot]─[/htb/labs/Authority]
-└──╼ #dig axfr htb.corp @10.10.11.222
+0ph3@parrot~$ dig axfr htb.corp @10.10.11.222
 
 ; <<>> DiG 9.18.16-1~deb12u1~bpo11+1-Debian <<>> axfr htb.corp @10.10.11.222
 ;; global options: +cmd
@@ -149,6 +146,8 @@ Let's try a DNS zone transfer using the domain name found in the ldap ssl certif
 Doesn't seem zone transfers are allowed. Let's move on to enumerating any SMB shares on the target
 
 ##SMB (445/TCP)
+
+
 
 ##Web service enumeration
 The web page on 80/TCP shows a standard IIS landing page. There does not seem to be much else here.
@@ -161,5 +160,19 @@ If we look below the login form, we can see the application is misconfigured and
 GIF-PWA
 
 As shown above, when enabled, configuration mode grants access to the configuration manager and configuration editor with only a password.
-Let's try to use that password we found earlier to gain access to the page
+Let's try to use that password we found earlier to gain access.
 
+```shell
+0ph3@parrot~$ smbclient -L \\\\10.10.11.222\\
+Password for [WORKGROUP\0ph3]:
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        ADMIN$          Disk      Remote Admin
+        C$              Disk      Default share
+        Department Shares Disk      
+        Development     Disk      
+        IPC$            IPC       Remote IPC
+        NETLOGON        Disk      Logon server share 
+        SYSVOL          Disk      Logon server share 
+```
