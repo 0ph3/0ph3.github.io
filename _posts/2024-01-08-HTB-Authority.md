@@ -295,7 +295,10 @@ ldap_admin_password: !vault |
           3238343230333633350a646664396565633037333431626163306531336336326665316430613566
           3764
 ```
-The values we are after seem to be encrypted Ansible vault secrets. We can try to crack these values using [hashcat](https://hashcat.net/hashcat/) but first we must convert the encrypted blobs into a format hashcat can recognize by using the ```ansible2john``` tool. We will start by making sure we place each vault into its own file.
+The values we are after seem to be contained in an encrypted Ansible vault. 
+To extract the contents of these vaults, we need to find the secret used to encrypt them
+We can use the ```ansible2john.py``` tool to convert the encrypted blobs into a hash format [hashcat](https://hashcat.net/hashcat/) can use to crack the secret.
+We will start by making sure we place each vault into its own file.
 ```console
 0ph3@parrot~$ #ls
 ldap_admin_password  pwm_admin_login  pwm_admin_password
@@ -351,7 +354,11 @@ Restore.Point....: 32768/14344386 (0.23%)
 Restore.Sub.#1...: Salt:2 Amplifier:0-1 Iteration:9984-9999
 Candidates.#1....: dumbo -> loser69
 ```
-
+Now that we have the secret used to encrypt the vaults, we extract the information contained using ```ansible-vault``` tool.
+You can install this tool using pip.
+```console
+0ph3@parrot~$ pip3 install ansible-vault
+```
 ## User foothold svc_ldap
 
 
