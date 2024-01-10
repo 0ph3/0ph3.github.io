@@ -157,7 +157,7 @@ Doesn't seem zone transfers are allowed. Let's move on to enumerating the web se
 
 ### HTTP (80/TCP)
 The web page on 80/TCP shows a standard IIS landing page. There does not seem to be much else here.
-![IIS Default page](assets/img/posts/HTB/Authority/IIS.png)
+![IIS Default page](/assets/img/posts/HTB/Authority/IIS.png)
 Directory busting doesn't prove fruitful either. 
 ```
 0ph3@parrot~$ feroxbuster -u http://10.10.11.222
@@ -188,11 +188,11 @@ If we wanted to go down this IIS rabbit hole we could maybe try IIS tilde enumer
 Navigating to https://10.10.11.222/ redirects to a login page for a [PWM](https://github.com/pwm-project/pwm/) web application. 
 Doing some research reveals PWM is a java based application that allows users to login and submit password resets through LDAP.
 Trying some common default credentials on the login page does not have any sucess. It seems that the ldap connection to the directory for authentication is unavailable.
-![Failed login](assets/img/posts/HTB/Authority/PWM-Logattempt.png)
+![Failed login](/assets/img/posts/HTB/Authority/PWM-Logattempt.png)
 If we look below the login form, we can see a message stating the application is in configuration mode.
 This misconfiguration allows access to the configuration manager and configuration editor with only a password.
 
-![](assets/img/posts/HTB/Authority/PWM-Page.gif)
+![](/assets/img/posts/HTB/Authority/PWM-Page.gif)
 
 Before we fall down a password bruteforcing rabbit hole early on, let's continue to enumerate and see if we can find anything useful on any SMB shares. 
 
@@ -254,7 +254,7 @@ HTTP        authority.htb   5985   AUTHORITY        [*] http://authority.htb:598
 HTTP        authority.htb   5985   AUTHORITY        [-] authority.htb\Administrator:Welcome1 
 ```
 Trying the password for the PWM configuration manager also fails
-![Failed config manager login](assets/img/posts/HTB/Authority/Config-manager-badpw.png)
+![Failed config manager login](/assets/img/posts/HTB/Authority/Config-manager-badpw.png)
 While we could go deeper with this and try mutating the password, let's try to avoid another rabbit hole by continuing with our enumeration.
 After more searching, we can find Ansible configuration values in the```PWM/defaults/main.yml``` file.
 ```console
@@ -376,9 +376,9 @@ DevT3st@123
 ```
 ### Retrieving svc_ldap's credentials
 Using the password ```pWm_@dm!N_!23``` grants us access to the PWM Configuration editor.
-![Sucessfully logging in to PWM Config editor](assets/img/posts/HTB/Authority/pwm-conf-edit-login.png)
+![Sucessfully logging in to PWM Config editor](/assets/img/posts/HTB/Authority/pwm-conf-edit-login.png)
 Looking around the application doesn't leak any sensitive information but there is an option to test the ldap connection and change the target ldap url which is interesting.
-![Test LDAP profile functionality](assets/img/posts/HTB/Authority/Test-LDAP-function.png)
+![Test LDAP profile functionality](/assets/img/posts/HTB/Authority/Test-LDAP-function.png)
 It's likely credentials are sent from the server when trying to establish the ldap connection to the target url. This means we could potentially intercept them if we set the url to our attacker machine.
 let's start by setting up our netcat listener
 ```console
@@ -388,7 +388,7 @@ Ncat: Listening on :::389
 Ncat: Listening on 0.0.0.0:389
 ```
 Next we will change the ldap url to point to our attacker machine.
-![Changing the target LDAP url](assets/img/posts/HTB/Authority/edit-ldap-target.png)
+![Changing the target LDAP url](/assets/img/posts/HTB/Authority/edit-ldap-target.png)
 After clicking ```Test LDAP Profile``` we receive scredentials for the ```svc_ldap``` domain user on our ```netcat``` listener.
 ```console
 0ph3@parrot~$  nc -nvlp 389
