@@ -621,7 +621,7 @@ Looks like that failed. After researching the ```KDC_ERR_PADATA_TYPE_NOSUPP``` e
 
 ### PassTheCert RBCD
 
-In short, since we have genericWrite access to the domain account RBCD through the ldaps certificate authentication, we can edit the DC's msDS-AllowedToActOnBehalfOfOtherIdentity and add our machine account's ( ```HACK01$```) SID to gain delegation over the DC. This will allow us to request a service ticket to the DC for any user we wish to impersonate([Silver Ticket](https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/silver-ticket).
+In short, since we have domain admin access to the ldaps server through our certificate domain, we can edit the DC's msDS-AllowedToActOnBehalfOfOtherIdentity and add our machine account's ( ```HACK01$```) SID to gain delegation over the DC. This will allow us to request a service ticket to the DC for any user we wish to impersonate([Silver Ticket](https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/silver-ticket).
 
 Let's clone the PassTheTicket tool
 ```console
