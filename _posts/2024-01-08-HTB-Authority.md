@@ -239,7 +239,7 @@ It is often used by development teams and IT professionals to automatically depl
 That being said, the PWM folder looks interesting. With some luck, there may be stored credentials to the PWM login page that we found.
 
 ```ansible_inventory``` file seems to contain winrm credentials.
-```
+```console
 0ph3@parrot~$ cat /mnt/authority/development/Automation/Ansible/PWM/ansible_inventory 
 ansible_user: administrator
 ansible_password: Welcome1
