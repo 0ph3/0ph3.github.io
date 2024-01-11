@@ -5,11 +5,7 @@ categories: [HTB, Medium]
 
 ## Box information
 
-![Desktop View](/assets/img/posts/HTB/Authority/Authority-Icon.png)
-
-
-
-
+<img src="/assets/img/posts/HTB/Authority/Authority-Icon.png" width="200" height="100">
 
 Platform: Windows  Difficulty: Medium
 
