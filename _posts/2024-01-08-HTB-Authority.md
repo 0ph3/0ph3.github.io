@@ -735,4 +735,4 @@ htb\administrator
 Mode                LastWriteTime         Length Name
 ----                -------------         ------ ----
 -ar---        1/10/2024   5:46 PM             34 root.txt
-```
+``` 
