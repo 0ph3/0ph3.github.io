@@ -5,8 +5,7 @@ categories: [HTB, Medium]
 
 ## Box information
 
-![Desktop View](/assets/img/posts/HTB/Authority/Authority-Icon.png){: .shadow }
-
+![Desktop View](/assets/img/posts/HTB/Authority/Authority-Icon.png)
 
 Platform: Windows  Difficulty: Medium
 
