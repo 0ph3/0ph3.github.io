@@ -236,7 +236,7 @@ With the share mounted, lets take a look at the contents
         └── SHARE
 ```
 The share appears to host folders for different services under the Automation/Ansible folder.
-If you are unfamiliar with [Ansible](https://docs.ansible.com/ansible/latest/getting_started/introduction.html), know that it is essentially software used to automate complex tasks.
+If you are unfamiliar with [Ansible](https://docs.ansible.com/ansible/latest/getting_started/introduction.html), know that it is essentially software used to automate various tasks.
 It is often used by development teams and IT professionals to automatically deploy, maintain, update and manage software/system components and configurations amongst other uses.
 That being said, the PWM folder looks interesting. With some luck, there may be stored credentials to the PWM login page that we found.
 It's also worth noting the ADCS folder. There's a good chance ADCS is installed on the DC. We can keep this in mind but for now, let's check the PWM folder.
@@ -263,7 +263,7 @@ Trying the password for the PWM configuration manager also fails
 ![Failed config manager login](/assets/img/posts/HTB/Authority/Config-manager-badpw.png)
 
 While we could go deeper with this and try mutating the password, let's try to avoid another rabbit hole by continuing with our enumeration.
-After more searching, we can find Ansible configuration values in the```PWM/defaults/main.yml``` file.
+After more searching, we find Ansible configuration values in the```PWM/defaults/main.yml``` file.
 ```console
 0ph3@parrot~$ cat /mnt/authority/development/Automation/Ansible/PWM/defaults/main.yml 
 ---
