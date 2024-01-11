@@ -215,9 +215,10 @@ SMB         10.10.11.222    445    AUTHORITY        IPC$            READ        
 SMB         10.10.11.222    445    AUTHORITY        NETLOGON                        Logon server share 
 SMB         10.10.11.222    445    AUTHORITY      
 ```
-Looks like we only have READ access to the ```Development``` share. Let's see what we can find!
-We could use smbclient to manually navigate the share but mounting the share will making searching through directories and files easier.
+```netexec``` reveals the hostname of our target is AUTHORITY. We will add this to our host file and continue looking at our file share permissions.
+It seems that we only have READ access to the ```Development``` share. Let's see what we can find!
 
+We could use smbclient to manually navigate the share but mounting the share will making searching through directories and files easier.
 ```console
 0ph3@parrot~$ mkdir /mnt/authority/
 0ph3@parrot~$mount -t cifs //10.10.11.222/Development /mnt/authority/development/
@@ -463,7 +464,7 @@ SeIncreaseWorkingSetPrivilege Increase a process working set Enabled
 
 ```
 
-We don't see to be a member of any groups we could use to elevate privileges but the presence of ```BUILTIN\Certificate Service DCOM Access``` is interesting. This might confirm our suspicions that the DC might have ADCS installed.
+We don't see to be a member of any groups we could use to elevate privileges.
 ```console
 *Evil-WinRM* PS C:\Users\svc_ldap\desktop> whoami /groups
 
@@ -482,6 +483,21 @@ NT AUTHORITY\Authenticated Users            Well-known group S-1-5-11     Mandat
 NT AUTHORITY\This Organization              Well-known group S-1-5-15     Mandatory group, Enabled by default, Enabled group
 NT AUTHORITY\NTLM Authentication            Well-known group S-1-5-64-10  Mandatory group, Enabled by default, Enabled group
 Mandatory Label\Medium Plus Mandatory Level Label            S-1-16-8448
+```
+
+We saw an ADCS folder in the Development share earlier. Checking the ```Cert Publishers``` group reveals the Domain Controller is acting as a Certificate Authority.
+```console
+*Evil-WinRM* PS C:\Users\svc_ldap\desktop> net group "Cert Publishers" /domain
+The request will be processed at a domain controller for domain authority.htb.
+
+Group name     Cert Publishers
+Comment        Enterprise certification and renewal agents
+
+Members
+
+-------------------------------------------------------------------------------
+AUTHORITY$
+The command completed successfully.
 ```
 
 ### ADCS Enumeration
