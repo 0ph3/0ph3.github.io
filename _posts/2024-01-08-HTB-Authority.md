@@ -202,12 +202,12 @@ Navigating to https://10.10.11.222:8443/ redirects to a login page for a [PWM](h
 Doing some research reveals PWM is a java based application that allows users to login and submit password resets through LDAP.
 Trying some common default credentials on the login page does not have any sucess. It seems that the ldap connection to the directory for authentication is unavailable.
 ![Failed login](/assets/img/posts/HTB/Authority/PWM-Logattempt.png)
-If we look below the login form, we can see a message stating the application is in configuration mode.
-This misconfiguration allows access to the configuration manager and configuration editor with only a password.
+If we look below the login form, we  see a message stating the application is in configuration mode.
+This misconfiguration allows us to access the ```configuration manager``` and ```configuration editor``` pages using only a password.
 
 ![](/assets/img/posts/HTB/Authority/PWM-Page.gif)
 
-Before we fall down a password bruteforcing rabbit hole early on, let's continue to enumerate and see if we can find anything useful on any SMB shares. 
+There isn't a anything else to find here. We could try bruteforce the password but there are still other services to look at. Let's continue enumerating and see if we can find anything useful on any SMB shares. 
 
 ### SMB (445/TCP)
 ```console
@@ -225,10 +225,11 @@ SMB         10.10.11.222    445    AUTHORITY        IPC$            READ        
 SMB         10.10.11.222    445    AUTHORITY        NETLOGON                        Logon server share 
 SMB         10.10.11.222    445    AUTHORITY      
 ```
-```netexec``` reveals the hostname of our target is AUTHORITY. We will add this to our host file and continue looking at our file share permissions.
+```netexec``` reveals the hostname of our target is AUTHORITY. We can add this to our ```/etc/hosts``` file and continue looking at our file share permissions.
+
 It seems that we only have READ access to the ```Development``` share. Let's see what we can find!
 
-We could use smbclient to manually navigate the share but mounting the share will making searching through directories and files easier.
+We could use smbclient to connect to the share but mounting the share instead will make searching through directories and files easier.
 ```console
 0ph3@parrot~$ mkdir /mnt/authority/
 0ph3@parrot~$mount -t cifs //10.10.11.222/Development /mnt/authority/development/
@@ -246,9 +247,9 @@ With the share mounted, lets take a look at the contents
         └── SHARE
 ```
 The share appears to host folders for different services under the Automation/Ansible folder.
-If you are unfamiliar with [Ansible](https://docs.ansible.com/ansible/latest/getting_started/introduction.html), know that it is essentially software used to automate various tasks.
-It is often used by development teams and IT professionals to automatically deploy, maintain, update and manage software/system components and configurations amongst other uses.
-That being said, the PWM folder looks interesting. With some luck, there may be stored credentials to the PWM login page that we found.
+If you are unfamiliar with [Ansible](https://docs.ansible.com/ansible/latest/getting_started/introduction.html), just know that it is essentially software used to automate various tasks.
+It is often used by development teams and IT professionals to automatically deploy, maintain, update and manage software/system components and configurations.
+That being said, the PWM folder looks interesting. With some luck, there may be stored credentials for the configuration page.
 It's also worth noting the ADCS folder. There's a good chance ADCS is installed on the DC. We can keep this in mind but for now, let's check the PWM folder.
 
 The ```Automation/Ansible/PWM/ansible_inventory``` file seems to contain winrm credentials.
@@ -272,8 +273,8 @@ Trying the password for the PWM configuration manager also fails
 
 ![Failed config manager login](/assets/img/posts/HTB/Authority/Config-manager-badpw.png)
 
-While we could go deeper with this and try mutating the password, let's try to avoid another rabbit hole by continuing with our enumeration.
-After more searching, we find Ansible configuration values in the```PWM/defaults/main.yml``` file.
+While we could try mutating the password and bruteforcing the login, This seems like a rabbit hole, especially when there is still a lot to enumerate.
+After some more searching, we find some Ansible configuration values in the```PWM/defaults/main.yml``` file.
 ```console
 0ph3@parrot~$ cat /mnt/authority/development/Automation/Ansible/PWM/defaults/main.yml 
 ---
@@ -315,7 +316,7 @@ ldap_admin_password: !vault |
 ## User foothold 
 
 ### Cracking the vault secrets
-The values we are after seem to be contained in an encrypted Ansible vault. 
+The password values we are after seem to be contained in an encrypted Ansible vault. 
 To extract the contents of these vaults, we need to find the secret used to encrypt them
 We can use the ```ansible2john.py``` tool to convert the encrypted blobs into a hash format [hashcat](https://hashcat.net/hashcat/) can use to crack the secret.
 Let's start by making sure we place each vault into its own file.
@@ -330,7 +331,7 @@ $ANSIBLE_VAULT;1.1;AES256
 $ANSIBLE_VAULT;1.1;AES256
 313563383439633230633734353632613235633932356333653561346162616664333932633737363335616263326464633832376261306131303337653964350a363663623132353136346631396662386564323238303933393362313736373035356136366465616536373866346138623166383535303930356637306461350a3164666630373030376537613235653433386539346465336633653630356531
 ```
-Running ```ansible2john.py``` against all of the vault files will create hashes compatible with ```hashcat``` which we can redirect to the ```ansible_hashes``` file.
+Running ```ansible2john.py``` against all of the vault files will create a set of hashes compatible with ```hashcat``` which we will redirect to the ```ansible_hashes``` file.
 ```console
 0ph3@parrot~$ python3 /home/orph3u5/Downloads/ansible2john.py ldap_admin_password pwm_admin_password pwm_admin_login | tee ansible_hashes
 ldap_admin_password:$ansible$0*0*c08105402f5db77195a13c1087af3e6fb2bdae60473056b5a477731f51502f93*dfd9eec07341bac0e13c62fe1d0a5f7d*d04b50b49aa665c4db73ad5d8804b4b2511c3b15814ebcf2fe98334284203635
@@ -374,7 +375,7 @@ Restore.Point....: 32768/14344386 (0.23%)
 Restore.Sub.#1...: Salt:2 Amplifier:0-1 Iteration:9984-9999
 Candidates.#1....: dumbo -> loser69
 ```
-Now that we have the secret used to encrypt the vaults, we can extract the information contained using ```ansible-vault``` tool.
+Now that we have the secret used to encrypt the vaults, we can extract the information contained in them using ```ansible-vault``` tool.
 You can install this tool using pip.
 ```console
 0ph3@parrot~$ pip3 install ansible-vault
@@ -578,10 +579,10 @@ Certificate Templates
       ESC1                              : 'AUTHORITY.HTB\\Domain Computers' can enroll, enrollee supplies subject and template allows client authentication
 
 ```
-From the output, it looks like ```CorpVPN``` certificate is vulnerable to ESC1. A certificate template is vulnerable when the template allows low privileged groups, like members of Domain Users, to define an arbitrary user as the Subject Alternative Name (SAN) for a certificate request that can be used for client authentication. Effectively, a low privilege user could request a certificate with a high privilege user, like a domain admin, in the SAN and then use the certificate to authenticate as that user to domain resources ultimately leading to domain compromise.
+From the output, it looks like the ```CorpVPN``` certificate is vulnerable to ESC1. A certificate template is vulnerable to this when the template allows low privileged groups, like members of Domain Users, to define an arbitrary user as the Subject Alternative Name (SAN) for a certificate request that can be used for client authentication. Effectively, a low privilege user could request a certificate with a high privilege user, like a domain admin, in the SAN and then use the certificate to authenticate as that user via kerberos to domain resources, ultimately leading to domain compromise.
 
 ### Exploiting ESC1
-Currently, our plan of attack is to request a certificate with the domain admin account, ```AUTHORITY.HTB\Administrator```, defined in the SAN. We'll then use the certificate to authenticate via kerberos to the domain controller and extract the DA's nthash then connect to the DC as the DA account and finally retrieve the flag.
+Currently, our plan of attack is to request a certificate with the domain admin account, ```AUTHORITY.HTB\Administrator```, defined in the SAN. We'll then use the certificate to authenticate via kerberos to the domain controller and extract the DA's nthash. With the Administrator nthash, we can pass-the-hash to connect to the DC  and retrieve the Administrator flag.
 
 Looking at the ```certipy``` output, the only low privilege group that has enrollment rights for the template is ```AUTHORITY.HTB\Domain Computers```. We won't be able to directly use our ```svc_ldap``` user to request a certificate. We need to somehow gain access to a machine account. Fortunately for us, the ```MachineAccountQuota``` domain setting in AD allows unprivileged users the ability to add up to 10 machine accounts to the domain by default. Let's check if this setting is still set to the default value of 10, the easiest way is with netexec (formerly CrackMapExec, RIP in peace).
 
