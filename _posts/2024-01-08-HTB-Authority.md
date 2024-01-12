@@ -496,7 +496,7 @@ NT AUTHORITY\NTLM Authentication            Well-known group S-1-5-64-10  Mandat
 Mandatory Label\Medium Plus Mandatory Level Label            S-1-16-8448
 ```
 
-We saw an ADCS folder in the Development share earlier. We can confirm if the DC ```Authority.authority.htb``` group reveals is acting as a Certificate Authority using ```certutil -dump```.
+We saw an ADCS folder in the Development share earlier. We can confirm if the DC ```Authority.authority.htb``` is acting as a Certificate Authority by using ```certutil -dump```.
 ```console
 *Evil-WinRM* PS C:\Users\svc_ldap\Documents> certutil -dump
 Entry 0: (Local)
