@@ -1,7 +1,7 @@
 const $notification = $('#notification');
 const $btnRefresh = $('#notification .toast-body>button');
 
-particlesJS.load('sidebar', '/assets/particles.json', function() {
+particlesJS.load('particles', '/assets/particles.json', function() {
   console.log('callback - particles.js config loaded');
 });
 
