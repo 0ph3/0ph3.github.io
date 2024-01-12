@@ -5,7 +5,7 @@ categories: [HTB, Medium]
 
 ## Box information
 
-![](/assets/img/posts/HTB/Authority/Authority-Icon.png"){: width="250" height="250" }
+![](/assets/img/posts/HTB/Authority/Authority-Icon.png") {: width="250" height="250" }
 
 Platform: Windows  Difficulty: Medium
 
