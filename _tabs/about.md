@@ -3,7 +3,7 @@
 icon: fas fa-info-circle
 order: 4
 ---
-<script src="/assets/js/particles.js"></script>
+
 # About Me 🧑‍💻
 
 Hello!
