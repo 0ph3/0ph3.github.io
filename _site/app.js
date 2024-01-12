@@ -1,6 +1,11 @@
 const $notification = $('#notification');
 const $btnRefresh = $('#notification .toast-body>button');
 
+/* particlesJS.load(@dom-id, @path-json, @callback (optional)); */
+particlesJS.load('sidebar', '/assets/js/particles.json', function() {
+  console.log('callback - particles.js config loaded');
+});
+
 if ('serviceWorker' in navigator) {
     /* Registering Service Worker */
     navigator.serviceWorker.register('/sw.js')
