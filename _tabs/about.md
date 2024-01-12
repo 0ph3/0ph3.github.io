@@ -6,9 +6,11 @@ order: 4
 # About Me 🧑‍💻
 
 Hello!
-I'm Jordan, welcome to the 0ph3 blog! 👋  \
-I work as an IT Specialist but my primary interest is in offensive security and exploit development 👀. \
-You can expect to see posts on Hack The Box CTF writeups, projects I am working on, topics I'm learning and my progress growing as a 1337 hacker 😎. \
+I'm Jordan, welcome to the 0ph3 blog! 👋  
+\
+I work as an IT Specialist but my primary interest is in offensive security and exploit development 👀 
+\
+You can expect to see posts on Hack The Box CTF writeups, projects I am working on, topics I'm learning and my progress growing as a 1337 hacker 😎 
 
 ## 🏆 Certifications 
 <ul>
